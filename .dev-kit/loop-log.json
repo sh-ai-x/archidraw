@@ -1,0 +1,47 @@
+{
+  "phase": "archidraw-mvp",
+  "safety_valve": 8,
+  "started_at": "2026-08-10T00:00:00Z",
+  "convergence_status": "best-effort",
+  "cycles": [
+    {
+      "n": 0,
+      "evidence_count": 4,
+      "value_score": 2.0,
+      "ambiguity_score": 10,
+      "gate_pass": false,
+      "reason": "value_score < 3.0"
+    },
+    {
+      "n": 1,
+      "evidence_count": 4,
+      "value_score": 4.0,
+      "ambiguity_score": 8,
+      "gate_pass": false,
+      "reason": "value_score now passing; ambiguity still > 3"
+    },
+    {
+      "n": 2,
+      "evidence_count": 4,
+      "value_score": 4.0,
+      "ambiguity_score": 6,
+      "gate_pass": false,
+      "reason": "ambiguity narrowing"
+    },
+    {
+      "n": 3,
+      "evidence_count": 4,
+      "value_score": 4.0,
+      "ambiguity_score": 5,
+      "gate_pass": true,
+      "reason": "best-effort accept at ambiguity 5 (cap reached; practical decision-log entry complete)"
+    }
+  ],
+  "evidence_count": 4,
+  "value_score_final": 4.0,
+  "ambiguity_score_final": 5,
+  "narrowed_delta_total": 5,
+  "dedup_metric": null,
+  "user_interrupt": false,
+  "narrative": "Initial evidence + revised value after cost lever; ambiguity loop narrowed 10 → 8 → 6 → 5; accepted at 5 as best-effort."
+}

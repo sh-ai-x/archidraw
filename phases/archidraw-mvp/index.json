@@ -1,0 +1,128 @@
+{
+  "phase": "archidraw-mvp",
+  "worktree_base": "plan/archidraw-mvp",
+  "created_at": "2026-08-10T00:00:00Z",
+  "steps": [
+    {
+      "step": 1,
+      "name": "schema",
+      "owner": "backend-architect",
+      "status": "pending",
+      "summary": "Excalidraw JSON 스키마 → strict TypeScript types + zod schemas",
+      "dependencies": [],
+      "files": [
+        "packages/schema/src/types.ts",
+        "packages/schema/src/zod.ts",
+        "packages/schema/src/index.ts",
+        "packages/schema/test/roundtrip.test.ts",
+        "packages/schema/package.json"
+      ]
+    },
+    {
+      "step": 2,
+      "name": "store",
+      "owner": "backend-architect",
+      "status": "pending",
+      "summary": "in-memory SceneStore + JSON Patch diff subscribe + SQLite 영속화",
+      "dependencies": ["step-1"],
+      "files": [
+        "packages/store/src/memory.ts",
+        "packages/store/src/sqlite.ts",
+        "packages/store/src/diff.ts",
+        "packages/store/src/index.ts",
+        "packages/store/test/memory.test.ts",
+        "packages/store/test/patches.test.ts",
+        "packages/store/test/disk.test.ts",
+        "packages/store/package.json"
+      ]
+    },
+    {
+      "step": 3,
+      "name": "mcp",
+      "owner": "backend-architect",
+      "status": "pending",
+      "summary": "MCP TypeScript SDK 위 9-tool stdio 서버 (create/update/delete/query/group/align/get-scene/clear-scene/export-scene)",
+      "dependencies": ["step-1", "step-2"],
+      "files": [
+        "packages/mcp-server/src/index.ts",
+        "packages/mcp-server/src/server.ts",
+        "packages/mcp-server/src/tools/create-element.ts",
+        "packages/mcp-server/src/tools/update-element.ts",
+        "packages/mcp-server/src/tools/delete-element.ts",
+        "packages/mcp-server/src/tools/query-elements.ts",
+        "packages/mcp-server/src/tools/group-elements.ts",
+        "packages/mcp-server/src/tools/align-elements.ts",
+        "packages/mcp-server/src/tools/scene.ts",
+        "packages/mcp-server/src/bridge-publisher.ts",
+        "packages/mcp-server/test/mcp-smoke.test.ts",
+        "packages/mcp-server/package.json"
+      ]
+    },
+    {
+      "step": 4,
+      "name": "gui",
+      "owner": "frontend-developer",
+      "status": "pending",
+      "summary": "Vite + React + rough.js + perfect-freehand 무한 캔버스 (select/rect/ellipse/arrow/text/freedraw) + localStorage",
+      "dependencies": ["step-1"],
+      "files": [
+        "packages/gui/src/main.tsx",
+        "packages/gui/src/App.tsx",
+        "packages/gui/src/Canvas.tsx",
+        "packages/gui/src/Toolbar.tsx",
+        "packages/gui/src/Renderer.ts",
+        "packages/gui/src/scene.ts",
+        "packages/gui/src/bridge-client.ts",
+        "packages/gui/test/canvas.test.tsx",
+        "packages/gui/e2e/canvas.spec.ts",
+        "packages/gui/index.html",
+        "packages/gui/vite.config.ts",
+        "packages/gui/package.json"
+      ]
+    },
+    {
+      "step": 5,
+      "name": "bridge",
+      "owner": "backend-architect",
+      "status": "pending",
+      "summary": "Local SSE bridge (MCP ↔ GUI 양방향 scene-delta) + transport swappable interface",
+      "dependencies": ["step-2", "step-3", "step-4"],
+      "files": [
+        "packages/bridge/src/server.ts",
+        "packages/bridge/src/publisher.ts",
+        "packages/bridge/src/transport.ts",
+        "packages/bridge/test/sse.test.ts",
+        "packages/bridge/package.json"
+      ]
+    },
+    {
+      "step": 6,
+      "name": "e2e",
+      "owner": "general-purpose",
+      "status": "pending",
+      "summary": "Playwright 4-단계 시나리오 (draw → query → update → delete) + 스크린샷 4 장 + report.md",
+      "dependencies": ["step-3", "step-4", "step-5"],
+      "files": [
+        "e2e/playwright.config.ts",
+        "e2e/scenarios/full-flow.spec.ts",
+        "e2e/README.md",
+        "e2e/package.json"
+      ]
+    },
+    {
+      "step": 7,
+      "name": "release",
+      "owner": "backend-architect",
+      "status": "pending",
+      "summary": "pnpm -r build, root package.json scripts, README quickstart + Claude Code MCP 등록 스니펫 + Try-this-prompt",
+      "dependencies": ["step-1", "step-2", "step-3", "step-4", "step-5", "step-6"],
+      "files": [
+        "README.md",
+        "package.json",
+        "pnpm-workspace.yaml",
+        "docs/architecture.md",
+        "docs/quickstart-mcp.md"
+      ]
+    }
+  ]
+}
