@@ -7,7 +7,7 @@
       "step": 1,
       "name": "schema",
       "owner": "backend-architect",
-      "status": "pending",
+      "status": "completed",
       "summary": "Excalidraw JSON 스키마 -> strict TypeScript types + zod schemas",
       "dependencies": [],
       "files": [
@@ -22,7 +22,7 @@
       "step": 2,
       "name": "store",
       "owner": "backend-architect",
-      "status": "pending",
+      "status": "completed",
       "summary": "in-memory SceneStore + JSON Patch diff subscribe + SQLite 영속화",
       "dependencies": ["step-1"],
       "files": [

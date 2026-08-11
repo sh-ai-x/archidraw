@@ -1,5 +1,6 @@
 import type {Element,ExcalidrawScene} from "@archidraw/schema";
 import {diffJson,type JsonPatchOperation} from "./diff.js";
+<<<<<<< HEAD
 export type CreateElementInput=Partial<Element>&{id:string;type:Element["type"]}; export type ElementPatch=Record<string,unknown>;
 export interface QueryFilter{ids?:string[];type?:Element["type"]|string;includeDeleted?:boolean;bounds?:{x:number;y:number;width:number;height:number};[key:string]:unknown}
 export type SceneStoreCallback=(patches:JsonPatchOperation[],scene:ExcalidrawScene)=>void;
@@ -7,3 +8,25 @@ export interface SceneStore{createElement(input:Element|{element:Element}):Eleme
 const clone=<T>(value:T):T=>structuredClone(value);
 export class MemorySceneStore implements SceneStore{protected elements=new Map<string,Element>();protected subscribers=new Set<SceneStoreCallback>();constructor(initial?:Element[]|ExcalidrawScene){for(const element of Array.isArray(initial)?initial:initial?.elements??[])this.elements.set(element.id,clone(element))}createElement(input:Element|{element:Element}):Element{const element="element"in input?input.element:input;if(this.elements.has(element.id))throw new Error(`Element already exists: ${element.id}`);this.elements.set(element.id,clone(element));this.emit([{op:"add",path:"/elements/-",value:clone(element)}]);return clone(element)}updateElement(id:string,patch:ElementPatch|{updates:ElementPatch}):Element{const current=this.elements.get(id);if(!current)throw new Error(`Element not found: ${id}`);const updates="updates"in patch?patch.updates:patch;const next={...current,...(clone(updates)as Record<string,unknown>),id,type:current.type}as Element;this.elements.set(id,next);this.emit(diffJson(current,next,`/elements/${this.indexOf(id)}`));return clone(next)}deleteElement(id:string):void{if(!this.elements.has(id))return;const index=this.indexOf(id);this.elements.delete(id);this.emit([{op:"remove",path:`/elements/${index}`}])}queryElements(filter:QueryFilter={}):Element[]{return[...this.elements.values()].filter(e=>(filter.includeDeleted||!e.isDeleted)&&(!filter.ids||filter.ids.includes(e.id))&&(!filter.type||e.type===filter.type)&&(!filter.bounds||intersects(e,filter.bounds))).map(clone)}getScene():ExcalidrawScene{return{type:"excalidraw",version:2,source:"archidraw",elements:this.queryElements({includeDeleted:true}),appState:{},files:{}}}clearScene():void{if(!this.elements.size)return;this.elements.clear();this.emit([{op:"replace",path:"/elements",value:[]}])}subscribe(callback:SceneStoreCallback):void{this.subscribers.add(callback)}unsubscribe(callback:SceneStoreCallback):void{this.subscribers.delete(callback)}protected emit(patches:JsonPatchOperation[]):void{if(!patches.length)return;const scene=this.getScene();for(const callback of this.subscribers)callback(clone(patches),clone(scene))}protected indexOf(id:string):number{return[...this.elements.keys()].indexOf(id)}}
 function intersects(e:Element,b:{x:number;y:number;width:number;height:number}){return e.x<b.x+b.width&&e.x+e.width>b.x&&e.y<b.y+b.height&&e.y+e.height>b.y}
+=======
+export type CreateElementInput=Partial<Element> & {id:string;type:Element["type"]};
+export type ElementPatch=Record<string,unknown>;
+export interface QueryFilter {ids?:string[];type?:Element["type"]|string;includeDeleted?:boolean;[key:string]:unknown}
+export type SceneStoreCallback=(patches:JsonPatchOperation[],scene:ExcalidrawScene)=>void;
+export interface SceneStore {createElement(input:Element|{element:Element}):Element;updateElement(id:string,patch:ElementPatch|{updates:ElementPatch}):Element;deleteElement(id:string):void;queryElements(filter?:QueryFilter):Element[];getScene():ExcalidrawScene;clearScene():void;subscribe(callback:SceneStoreCallback):void;unsubscribe(callback:SceneStoreCallback):void}
+const clone=<T>(value:T):T=>structuredClone(value);
+export class MemorySceneStore implements SceneStore{
+  protected elements=new Map<string,Element>(); protected subscribers=new Set<SceneStoreCallback>();
+  constructor(initial?:Element[]|ExcalidrawScene){for(const element of Array.isArray(initial)?initial:initial?.elements??[])this.elements.set(element.id,clone(element));}
+  createElement(input:Element|{element:Element}):Element{const element="element" in input?input.element:input;if(this.elements.has(element.id))throw new Error(`Element already exists: ${element.id}`);this.elements.set(element.id,clone(element));this.emit([{op:"add",path:`/elements/-`,value:clone(element)}]);return clone(element)}
+  updateElement(id:string,patch:ElementPatch|{updates:ElementPatch}):Element{const current=this.elements.get(id);if(!current)throw new Error(`Element not found: ${id}`);const updates="updates" in patch?patch.updates:patch;const next={...current,...(clone(updates) as Record<string,unknown>),id,type:current.type} as Element;this.elements.set(id,next);this.emit(diffJson(current,next,`/elements/${this.indexOf(id)}`));return clone(next)}
+  deleteElement(id:string):void{if(!this.elements.has(id))return;const index=this.indexOf(id);this.elements.delete(id);this.emit([{op:"remove",path:`/elements/${index}`}])}
+  queryElements(filter:QueryFilter={}):Element[]{return [...this.elements.values()].filter(element=>(filter.includeDeleted||!element.isDeleted)&&(!filter.ids||filter.ids.includes(element.id))&&(!filter.type||element.type===filter.type)).map(clone)}
+  getScene():ExcalidrawScene{return {type:"excalidraw",version:2,source:"archidraw",elements:this.queryElements({includeDeleted:true}),appState:{},files:{}}}
+  clearScene():void{if(!this.elements.size)return;this.elements.clear();this.emit([{op:"replace",path:"/elements",value:[]}])}
+  subscribe(callback:SceneStoreCallback):void{this.subscribers.add(callback)}
+  unsubscribe(callback:SceneStoreCallback):void{this.subscribers.delete(callback)}
+  protected emit(patches:JsonPatchOperation[]):void{if(!patches.length)return;const scene=this.getScene();for(const callback of this.subscribers)callback(clone(patches),clone(scene))}
+  protected indexOf(id:string):number{return [...this.elements.keys()].indexOf(id)}
+}
+>>>>>>> origin/main

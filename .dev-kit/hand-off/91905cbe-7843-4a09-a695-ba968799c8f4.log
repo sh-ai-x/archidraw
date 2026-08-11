@@ -7,3 +7,12 @@ Bash	python3 - <<'PY' import os, re  # char normalization table replacements = {
 Bash	ls -la /Users/sanghee/dev/archidraw/.worktrees/plan-archidraw/.dev-kit/hand-off/
 Bash	python3 - <<'PY' import os  replacements = {     "◀──▶": "<-->", "◀──": "<--", "
 Bash	git status --short 2>&1 | head -20 && echo "---total changed---" && git status -
+Bash	git -C /Users/sanghee/dev/archidraw worktree add -B plan/archidraw-mvp-step2-res
+Bash	git -C /Users/sanghee/dev/archidraw/.worktrees/step2-resolve status --short 2>&1
+Bash	git -C /Users/sanghee/dev/archidraw/.worktrees/step2-resolve diff --name-status 
+Bash	echo "---step2 worktree packages/store---"; ls /Users/sanghee/dev/archidraw/.wor
+Bash	git -C /Users/sanghee/dev/archidraw ls-tree origin/main packages/store/ 2>&1; ec
+Bash	git -C /Users/sanghee/dev/archidraw ls-tree origin/main packages/schema/ 2>&1; e
+Bash	for f in package.json packages/schema/package.json packages/schema/src/index.ts 
+Bash	rm -f /Users/sanghee/dev/archidraw/.git/worktrees/step2-resolve/index.lock 2>&1;
+Bash	git -C /Users/sanghee/dev/archidraw fetch origin 2>&1; echo "---resolve #15 (mcp
