@@ -1,0 +1,4 @@
+Bash	sed -n '1,240p' /Users/sanghee/.codex/plugins/cache/dev-kit/dev-kit/0.3.242/skil
+Bash	printf '%s\n' '--- step1 ---'; sed -n '1,240p' phases/archidraw-mvp/step1.md; pr
+Bash	pwd; ls -la; find . -maxdepth 3 -type f | sort | head -160
+Bash	command -v pnpm || true; command -v node || true; command -v npm || true; find .
