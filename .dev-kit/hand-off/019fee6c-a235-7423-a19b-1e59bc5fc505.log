@@ -1,0 +1,4 @@
+Bash	sed -n '1,240p' /Users/sanghee/.codex/plugins/cache/dev-kit/dev-kit/0.3.242/skil
+Bash	find /Users/sanghee/dev/archidraw -maxdepth 4 -type f \( -name package.json -o -
+Bash	pwd; ls -la; ls -la .git 2>&1; test -w . && echo writable || echo read-only; tes
+Bash	sed -n '1,20p' .git; find /Users/sanghee/dev/archidraw/.git/refs -type f -maxdep
