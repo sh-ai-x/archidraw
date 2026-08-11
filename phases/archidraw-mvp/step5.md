@@ -1,6 +1,6 @@
 # Step 5 -- bridge
 
-Status: pending
+Status: completed
 
 ## Read first
 
