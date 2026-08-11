@@ -8,4 +8,6 @@
 .dev-kit/.eval-cache/
 .dev-kit/logs/
 logs/
+node_modules/
+packages/*/dist/
 # <<< dev-kit <<<
