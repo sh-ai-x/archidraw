@@ -236,6 +236,29 @@ jobs:
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
 
+      - name: Post review summary as PR comment (provider-agnostic fallback)
+        id: post_summary_review
+        # ROOT-CAUSE FIX (sh-ai-x/archidraw PR #17/#18/#20/#21): the prompt
+        # instructs the agent to call `gh pr comment` itself, but
+        # MiniMax-routed runs (and other provider quirks) routinely
+        # produce an agent output file with no recognizable
+        # `Verdict:` line AND no PR comment. This step defensively
+        # re-posts the agent's last assistant text via the workflow's
+        # GITHUB_TOKEN so consumers ALWAYS see a review summary on
+        # the PR — independent of whether the agent self-posted.
+        # Idempotent: body is prefixed with a run-tagged HTML marker
+        # so a re-run on the same PR is de-duplicated by gh CLI.
+        if: always() && steps.fallback.outputs.needs_fallback != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.provider.outputs.pr_number }}
+        run: |
+          python3 "${{ github.workspace }}/scripts/post-review-summary.py" \
+            --pr-number "$PR_NUMBER" \
+            --job review \
+            --output-file "${{ runner.temp }}/claude-execution-output.json" \
+            --run-id "${{ github.run_id }}"
+
       - name: Detect bootstrap-PR fallback
         id: fallback
         if: always()
@@ -518,6 +541,23 @@ jobs:
             only "Verdict: <value>".)
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
+
+      - name: Post security summary as PR comment (provider-agnostic fallback)
+        id: post_summary_security
+        # ROOT-CAUSE FIX (sh-ai-x/archidraw PR #17/#18/#20/#21): same
+        # rationale as the review-job fallback — guarantees a security
+        # summary comment is posted even when the agent ran but did
+        # not call `gh pr comment` itself.
+        if: always() && steps.fallback.outputs.needs_fallback != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ steps.provider.outputs.pr_number }}
+        run: |
+          python3 "${{ github.workspace }}/scripts/post-review-summary.py" \
+            --pr-number "$PR_NUMBER" \
+            --job security \
+            --output-file "${{ runner.temp }}/claude-execution-output.json" \
+            --run-id "${{ github.run_id }}"
 
       - name: Detect bootstrap-PR fallback
         id: fallback
