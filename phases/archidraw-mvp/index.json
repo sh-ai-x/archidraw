@@ -40,7 +40,7 @@
       "step": 3,
       "name": "mcp",
       "owner": "backend-architect",
-      "status": "pending",
+      "status": "completed",
       "summary": "MCP TypeScript SDK 위 9-tool stdio 서버 (create/update/delete/query/group/align/get-scene/clear-scene/export-scene)",
       "dependencies": ["step-1", "step-2"],
       "files": [
