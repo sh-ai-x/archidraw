@@ -1,0 +1,18 @@
+Bash	/bin/ls -la /Users/sanghee/dev/archidraw/.worktrees/archidraw-mvp-step1; /bin/ls
+Bash	/usr/bin/head -200 /Users/sanghee/.codex/plugins/cache/dev-kit/dev-kit/0.3.244/s
+Bash	git status --short --branch; find . -maxdepth 3 -type f | sort | sed -n '1,240p'
+Bash	sed -n '1,220p' PRD.md; printf '\n---INDEX---\n'; sed -n '1,240p' phases/archidr
+Bash	rg --files -g 'package.json' -g 'pnpm-workspace.yaml' -g 'tsconfig*.json' -g 'pa
+Bash	node --version; pnpm --version; test -d node_modules && echo node_modules-presen
+Bash	sed -n '1,260p' packages/schema/src/zod.ts; sed -n '1,100p' packages/schema/pack
+Bash	git diff --stat; git status --short
+Bash	pnpm install --ignore-scripts
+Bash	pnpm --filter @archidraw/schema build
+Bash	pnpm --filter @archidraw/schema test
+Bash	pnpm --filter @archidraw/schema typecheck
+Bash	git status --short; test -f pnpm-lock.yaml && echo lock-present
+Bash	rg '^export ' packages/schema/dist/index.d.ts packages/schema/dist/types.d.ts pa
+Bash	sed -n '1,200p' .gitignore
+Bash	git diff --check; git diff --stat; git status --short
+Bash	git add .gitignore phases/archidraw-mvp/index.json package.json pnpm-workspace.y
+Bash	git status --short --branch; git log -1 --oneline; sed -n '1,24p' phases/archidr

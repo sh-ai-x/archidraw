@@ -1,0 +1,2 @@
+import type {Element} from "@archidraw/schema";
+export function element(id="one",overrides:Record<string,unknown>={}):Element{return {id,type:"rectangle",x:0,y:0,width:100,height:80,angle:0,strokeColor:"#000",backgroundColor:"transparent",fillStyle:"solid",strokeWidth:1,strokeStyle:"solid",roughness:1,opacity:100,groupIds:null,frameId:null,index:null,roundness:null,seed:1,versionNonce:1,isDeleted:false,boundElements:null,updated:1,link:null,locked:false,...overrides} as Element}
