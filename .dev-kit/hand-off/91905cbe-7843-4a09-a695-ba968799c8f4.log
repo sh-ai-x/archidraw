@@ -1,1 +1,9 @@
-Bash	cd /Users/sanghee/dev/archidraw/.worktrees/ci-setup && bash scripts/ci-local.sh 
+Bash	cd /Users/sanghee/dev/archidraw/.worktrees/plan-archidraw && pwd && git log -1 -
+Bash	git add -A && git status --short | wc -l && git -c user.name="sh-ai-x" -c user.e
+Bash	git log -1 --format='%H%n%an <%ae>%n%s' 2>&1 && git push -u origin plan/archidra
+Bash	gh pr create --head plan/archidraw-mvp --title "plan(archidraw-mvp): PRD + 7-ste
+Bash	cd /Users/sanghee/dev/archidraw/.worktrees/plan-archidraw && pwd 2>&1
+Bash	python3 - <<'PY' import os, re  # char normalization table replacements = {     
+Bash	ls -la /Users/sanghee/dev/archidraw/.worktrees/plan-archidraw/.dev-kit/hand-off/
+Bash	python3 - <<'PY' import os  replacements = {     "◀──▶": "<-->", "◀──": "<--", "
+Bash	git status --short 2>&1 | head -20 && echo "---total changed---" && git status -
