@@ -62,7 +62,7 @@
       "step": 4,
       "name": "gui",
       "owner": "frontend-developer",
-      "status": "pending",
+      "status": "completed",
       "summary": "Vite + React + rough.js + perfect-freehand 무한 캔버스 (select/rect/ellipse/arrow/text/freedraw) + localStorage",
       "dependencies": ["step-1"],
       "files": [

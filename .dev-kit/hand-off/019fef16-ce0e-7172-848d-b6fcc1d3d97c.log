@@ -1,0 +1,27 @@
+Bash	sed -n '1,240p' /Users/sanghee/.codex/plugins/cache/dev-kit/dev-kit/0.3.245/skil
+Bash	printf '%s\n' '--- step1 ---'; sed -n '1,240p' phases/archidraw-mvp/step1.md; pr
+Bash	for f in phases/archidraw-mvp/step{1,2,3,4}-output.json; do echo ---$f; sed -n '
+Bash	git ls-tree -r --name-only feat/archidraw-mvp-step1 | head -100; git ls-tree -r 
+Bash	git cherry-pick 4fe77ff 2b2c1de
+Bash	for f in package.json pnpm-workspace.yaml packages/schema/package.json packages/
+Bash	ls -d node_modules 2>/dev/null || true; command -v pnpm; node --version; git sho
+Bash	pnpm install --no-frozen-lockfile
+Bash	pnpm install --no-frozen-lockfile
+Bash	pnpm --filter @archidraw/gui build && pnpm --filter @archidraw/gui test
+Bash	find node_modules/.pnpm -path '*roughjs*' -maxdepth 5 -type f | head -30; cat no
+Bash	pnpm --filter @archidraw/gui build
+Bash	pnpm --filter @archidraw/gui build
+Bash	npx playwright test --config packages/gui/playwright.config.ts --update-snapshot
+Bash	pnpm install --no-frozen-lockfile
+Bash	npx playwright test --config packages/gui/playwright.config.ts --update-snapshot
+Bash	pnpm --filter @archidraw/gui exec playwright test --config playwright.config.ts 
+Bash	pnpm --filter @archidraw/gui exec playwright test --config playwright.config.ts 
+Bash	pnpm --filter @archidraw/gui exec playwright install chromium
+Bash	pnpm --filter @archidraw/gui exec playwright test --config playwright.config.ts 
+Bash	pnpm --filter @archidraw/gui exec playwright test --config playwright.config.ts
+Bash	git status --short; find packages/gui -maxdepth 4 -type f | sort; git diff --sta
+Bash	rm -rf node_modules packages/gui/node_modules packages/gui/dist packages/gui/tes
+Bash	rg -n '"step"|"status"' phases/archidraw-mvp/index.json; git status --short | he
+Bash	rg -n '"step"|"status"' phases/archidraw-mvp/index.json; git status --short | he
+Bash	git add .gitignore package.json pnpm-workspace.yaml pnpm-lock.yaml packages phas
+Bash	git status --short --branch; git show --stat --oneline --summary HEAD; rg -n '"s
