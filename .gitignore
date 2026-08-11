@@ -9,3 +9,7 @@
 .dev-kit/logs/
 logs/
 # <<< dev-kit <<<
+.DS_Store
+node_modules/
+dist/
+test-results/
