@@ -7,7 +7,7 @@
       "step": 1,
       "name": "schema",
       "owner": "backend-architect",
-      "status": "pending",
+      "status": "completed",
       "summary": "Excalidraw JSON 스키마 -> strict TypeScript types + zod schemas",
       "dependencies": [],
       "files": [
