@@ -1,0 +1,4 @@
+Bash	sed -n '1,240p' /Users/sanghee/.codex/plugins/cache/dev-kit/dev-kit/0.3.242/skil
+Bash	find . -maxdepth 4 -type f | sort | sed -n '1,240p'; printf '\n--- step4 ---\n';
+Bash	ls -la; ls -la ../; find /Users/sanghee/dev/archidraw -maxdepth 4 -type f \( -na
+Bash	find ../archidraw-mvp-step1/packages ../archidraw-mvp-step2/packages -maxdepth 4
