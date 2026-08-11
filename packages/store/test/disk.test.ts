@@ -1,0 +1,10 @@
+import {createRequire} from "node:module";
+import {describe,expect,it} from "vitest";
+import {mkdtempSync,rmSync} from "node:fs";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+import {SqliteSceneStore} from "../src/index.js";
+import {element} from "./fixtures.js";
+const require=createRequire(import.meta.url);
+const available=(()=>{try{const Database=require("better-sqlite3");const db=new Database(":memory:");db.close();return true}catch{return false}})();
+describe("SqliteSceneStore",()=>{it.skipIf(!available)("restores a scene after reopening",()=>{const dir=mkdtempSync(join(tmpdir(),"archidraw-"));const path=join(dir,"scene.db");const first=new SqliteSceneStore(path);first.createElement(element("persisted"));first.close();const second=new SqliteSceneStore(path);expect(second.getScene().elements).toEqual([element("persisted")]);second.close();rmSync(dir,{recursive:true,force:true})})});

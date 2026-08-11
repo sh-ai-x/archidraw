@@ -11,3 +11,6 @@ logs/
 node_modules/
 packages/*/dist/
 # <<< dev-kit <<<
+node_modules/
+dist/
+.pnpm-store/
