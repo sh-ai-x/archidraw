@@ -2,12 +2,64 @@
 # dev-kit runtime artifacts (auto-installed by `dev-kit:ci-setup`; issue #202).
 # Marker `.dev-kit/ci-config.json` is intentionally tracked so that
 # `dev-kit:ci-setup --force` can detect drift. The paths below are
-# runtime state — write-only by dev-kit, regenerated on each run —
+# runtime state -- write-only by dev-kit, regenerated on each run --
 # and must never be committed.
 .dev-kit/.cost-gate/
 .dev-kit/.eval-cache/
 .dev-kit/logs/
 logs/
-node_modules/
-packages/*/dist/
 # <<< dev-kit <<<
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+*.js.map
+*.d.ts.map
+
+# Vite
+.vite/
+.cache/
+.turbo/
+
+# Test artifacts
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+playwright/.cache/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# Env files
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs (legacy)
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Misc
+.tmp/
+.cache/
+.pid
+*.pid
