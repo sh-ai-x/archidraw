@@ -1,0 +1,4 @@
+import {describe,expect,it} from "vitest";
+import {MemorySceneStore} from "../src/index.js";
+import {element} from "./fixtures.js";
+describe("JSON Patch subscriptions",()=>{it("emits field and array operations",()=>{const store=new MemorySceneStore();const batches:any[]=[];store.subscribe(p=>batches.push(p));store.createElement(element());store.updateElement("one",{x:12,groupIds:["g"]});store.updateElement("one",{groupIds:[]});store.deleteElement("one");expect(batches[0]).toEqual([{op:"add",path:"/elements/-",value:expect.objectContaining({id:"one"})}]);expect(batches[1]).toEqual(expect.arrayContaining([{op:"replace",path:"/elements/0/x",value:12},{op:"replace",path:"/elements/0/groupIds",value:["g"]}]));expect(batches[2]).toEqual([{op:"remove",path:"/elements/0/groupIds/0"}]);expect(batches[3]).toEqual([{op:"remove",path:"/elements/0"}])})});

@@ -22,7 +22,7 @@
       "step": 2,
       "name": "store",
       "owner": "backend-architect",
-      "status": "pending",
+      "status": "completed",
       "summary": "in-memory SceneStore + JSON Patch diff subscribe + SQLite 영속화",
       "dependencies": ["step-1"],
       "files": [
@@ -40,7 +40,7 @@
       "step": 3,
       "name": "mcp",
       "owner": "backend-architect",
-      "status": "pending",
+      "status": "completed",
       "summary": "MCP TypeScript SDK 위 9-tool stdio 서버 (create/update/delete/query/group/align/get-scene/clear-scene/export-scene)",
       "dependencies": ["step-1", "step-2"],
       "files": [
@@ -62,7 +62,7 @@
       "step": 4,
       "name": "gui",
       "owner": "frontend-developer",
-      "status": "pending",
+      "status": "completed",
       "summary": "Vite + React + rough.js + perfect-freehand 무한 캔버스 (select/rect/ellipse/arrow/text/freedraw) + localStorage",
       "dependencies": ["step-1"],
       "files": [
@@ -84,7 +84,7 @@
       "step": 5,
       "name": "bridge",
       "owner": "backend-architect",
-      "status": "pending",
+      "status": "completed",
       "summary": "Local SSE bridge (MCP <-> GUI 양방향 scene-delta) + transport swappable interface",
       "dependencies": ["step-2", "step-3", "step-4"],
       "files": [
@@ -99,7 +99,7 @@
       "step": 6,
       "name": "e2e",
       "owner": "general-purpose",
-      "status": "pending",
+      "status": "completed",
       "summary": "Playwright 4-단계 시나리오 (draw -> query -> update -> delete) + 스크린샷 4 장 + report.md",
       "dependencies": ["step-3", "step-4", "step-5"],
       "files": [
@@ -113,7 +113,7 @@
       "step": 7,
       "name": "release",
       "owner": "backend-architect",
-      "status": "pending",
+      "status": "completed",
       "summary": "pnpm -r build, root package.json scripts, README quickstart + Claude Code MCP 등록 스니펫 + Try-this-prompt",
       "dependencies": ["step-1", "step-2", "step-3", "step-4", "step-5", "step-6"],
       "files": [
