@@ -8,7 +8,7 @@
       "name": "schema",
       "owner": "backend-architect",
       "status": "pending",
-      "summary": "Excalidraw JSON 스키마 → strict TypeScript types + zod schemas",
+      "summary": "Excalidraw JSON 스키마 -> strict TypeScript types + zod schemas",
       "dependencies": [],
       "files": [
         "packages/schema/src/types.ts",
@@ -85,7 +85,7 @@
       "name": "bridge",
       "owner": "backend-architect",
       "status": "pending",
-      "summary": "Local SSE bridge (MCP ↔ GUI 양방향 scene-delta) + transport swappable interface",
+      "summary": "Local SSE bridge (MCP <-> GUI 양방향 scene-delta) + transport swappable interface",
       "dependencies": ["step-2", "step-3", "step-4"],
       "files": [
         "packages/bridge/src/server.ts",
@@ -100,7 +100,7 @@
       "name": "e2e",
       "owner": "general-purpose",
       "status": "pending",
-      "summary": "Playwright 4-단계 시나리오 (draw → query → update → delete) + 스크린샷 4 장 + report.md",
+      "summary": "Playwright 4-단계 시나리오 (draw -> query -> update -> delete) + 스크린샷 4 장 + report.md",
       "dependencies": ["step-3", "step-4", "step-5"],
       "files": [
         "e2e/playwright.config.ts",

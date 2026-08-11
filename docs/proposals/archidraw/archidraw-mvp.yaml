@@ -1,11 +1,11 @@
 ---
-title: "archidraw — Excalidraw-class whiteboard + MCP integration"
+title: "archidraw -- Excalidraw-class whiteboard + MCP integration"
 status: design-discussion
 date: 2026-08-10
 tags: [archidraw-mvp, plan]
 ---
 
-# archidraw — Excalidraw-class whiteboard + MCP integration
+# archidraw -- Excalidraw-class whiteboard + MCP integration
 
 ## §1 Goal
 
@@ -14,12 +14,12 @@ Excalidraw JSON 스키마를 단일 진실 원천으로 하는 브라우저 화�
 ## §2 Validate
 
 - 4 independent sources (Excalidraw docs, MCP SDK repo, excalidraw-mcp community impl, HN practitioner survey)
-- value_score = (50 × 20) / 12,500 = **4.0** (after cost lever to 12.5k)
+- value_score = (50 * 20) / 12,500 = **4.0** (after cost lever to 12.5k)
 - ambiguity_score = **5** (best-effort; accepted per cycle log)
 
 ## §3 Non-goals
 
-1. 실시간 멀티유저 collaboration (Yjs 미도입 — slot 만 확보)
+1. 실시간 멀티유저 collaboration (Yjs 미도입 -- slot 만 확보)
 2. 클라우드 계정 / 인증 / 결제 (self-hosted only)
 3. 모바일 / 태블릿 네이티브 (desktop browser 만)
 4. PNG/SVG 외 export (PDF/Mermaid/draw.io XML 추가 안 함)
@@ -27,7 +27,7 @@ Excalidraw JSON 스키마를 단일 진실 원천으로 하는 브라우저 화�
 
 ## §4 Phase plan
 
-7 steps with single owner per step (4× backend-architect, 1× frontend-developer, 1× general-purpose, 1× backend-architect for release).
+7 steps with single owner per step (4* backend-architect, 1* frontend-developer, 1* general-purpose, 1* backend-architect for release).
 
 | # | Step | Owner |
 |---|---|---|
@@ -52,9 +52,9 @@ Excalidraw JSON 스키마를 단일 진실 원천으로 하는 브라우저 화�
 ## Layers (graphical description)
 
 ```
-Claude Code/Codex  ◀──stdIO(MCP)──▶  archidraw-mcp  ◀──Pub/Sub──▶  archidraw-bridge (SSE :5174)  ◀──SSE──▶  Browser (localhost:5173)
-                                            │
-                                            └─ SceneStore (in-memory + SQLite)
-                                                       │
-                                                       └─ Excalidraw JSON (canonical)
+Claude Code/Codex  <--stdIO(MCP)-->  archidraw-mcp  <--Pub/Sub-->  archidraw-bridge (SSE :5174)  <--SSE-->  Browser (localhost:5173)
+                                            |
+                                            +- SceneStore (in-memory + SQLite)
+                                                       |
+                                                       +- Excalidraw JSON (canonical)
 ```

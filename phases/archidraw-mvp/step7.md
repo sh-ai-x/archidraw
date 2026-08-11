@@ -1,10 +1,10 @@
-# Step 7 — release
+# Step 7 -- release
 
 Status: pending
 
 ## Read first
 
-- Step 1–6 모두 완료 상태 (status: completed)
+- Step 1-6 모두 완료 상태 (status: completed)
 - `PRD.md` §6 Hand-off
 
 ## Task
@@ -31,7 +31,7 @@ Status: pending
     }
     ```
   - **Try this prompt**: "Open localhost:5173, then in Claude Code: `Create a rectangle named 'auth' at 200,200`. Confirm the rectangle appears in the GUI."
-  - **Architecture**: 1 다이어그램 (GUI ↔ bridge ↔ MCP)
+  - **Architecture**: 1 다이어그램 (GUI <-> bridge <-> MCP)
 - `docs/architecture.md`: 레이어드 설명 (schema/store/MCP/GUI/bridge + e2e)
 - `docs/quickstart-mcp.md`: Claude Code 외 클라이언트 (Zed, Continue) 등록 스니펫
 
@@ -49,7 +49,7 @@ pnpm -r build
 bash -n docs/quickstart-mcp.md   # shell snippet syntax only (markdown shell fence 검증)
 ```
 
-Exit 0. 커밋: `feat(archidraw-mvp): step 7 — release`.
+Exit 0. 커밋: `feat(archidraw-mvp): step 7 -- release`.
 
 ## Don't
 

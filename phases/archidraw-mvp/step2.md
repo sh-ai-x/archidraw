@@ -1,4 +1,4 @@
-# Step 2 — store
+# Step 2 -- store
 
 Status: pending
 
@@ -20,9 +20,9 @@ Status: pending
 ## Acceptance criteria
 
 - `pnpm --filter @archidraw/store test` exit 0
-- `memory.test.ts` — create/update/delete 후 `getScene()` 가 정확히 반영
-- `patches.test.ts` — subscribe 콜백이 정확한 op(add/remove/replace) 와 path 를 받음
-- `disk.test.ts` — SQLite 영속화 후 프로세스 재시작으로 동일 scene 복원
+- `memory.test.ts` -- create/update/delete 후 `getScene()` 가 정확히 반영
+- `patches.test.ts` -- subscribe 콜백이 정확한 op(add/remove/replace) 와 path 를 받음
+- `disk.test.ts` -- SQLite 영속화 후 프로세스 재시작으로 동일 scene 복원
 
 ## Verification & status update
 
@@ -30,10 +30,10 @@ Status: pending
 pnpm --filter @archidraw/store test
 ```
 
-Exit 0. 커밋: `feat(archidraw-mvp): step 2 — store`.
+Exit 0. 커밋: `feat(archidraw-mvp): step 2 -- store`.
 
 ## Don't
 
 - CRDT 도입 금지 (collab 확장은 별도 phase)
-- 외부 pub/sub (Redis, NATS) 금지 — in-process EventEmitter 만
+- 외부 pub/sub (Redis, NATS) 금지 -- in-process EventEmitter 만
 - Race condition 방어를 위한 mutex 는 허용 (`async-mutex` 등) 단, dead-lock 회피를 위해 lock-free read 는 유지

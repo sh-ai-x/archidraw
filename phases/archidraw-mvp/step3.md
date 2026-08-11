@@ -1,4 +1,4 @@
-# Step 3 — mcp
+# Step 3 -- mcp
 
 Status: pending
 
@@ -15,15 +15,15 @@ Status: pending
 `@archidraw/mcp-server` npm 워크스페이스 패키지. `@modelcontextprotocol/sdk` 의 `McpServer` 위에 9 개 툴을 stdio 트랜스포트로 노출.
 
 - 툴 9 종:
-  - `create_element` — input: zod `{ type, x, y, width, height, ... element fields }`, returns `{ id }`
-  - `update_element` — input: `{ id, patch: Partial<element> }`, returns `{ id, updated }`
-  - `delete_element` — input: `{ id }`, returns `{ id }`
-  - `query_elements` — input: `{ filter?: { type?, ids?, bounds? } }`, returns `{ elements: Element[] }`
-  - `group_elements` — input: `{ ids: string[], groupId: string }`, returns `{ groupId }`
-  - `align_elements` — input: `{ ids: string[], alignment: 'left'|'center'|'right'|'top'|'middle'|'bottom' }`, returns `{ aligned: number }`
-  - `get_scene` — input: `{}`, returns `Scene`
-  - `clear_scene` — input: `{ confirm: true }`, returns `{ cleared: number }`
-  - `export_scene` — input: `{ format: 'json'|'svg'|'png' }`, returns `{ format, data: string | base64 }`
+  - `create_element` -- input: zod `{ type, x, y, width, height, ... element fields }`, returns `{ id }`
+  - `update_element` -- input: `{ id, patch: Partial<element> }`, returns `{ id, updated }`
+  - `delete_element` -- input: `{ id }`, returns `{ id }`
+  - `query_elements` -- input: `{ filter?: { type?, ids?, bounds? } }`, returns `{ elements: Element[] }`
+  - `group_elements` -- input: `{ ids: string[], groupId: string }`, returns `{ groupId }`
+  - `align_elements` -- input: `{ ids: string[], alignment: 'left'|'center'|'right'|'top'|'middle'|'bottom' }`, returns `{ aligned: number }`
+  - `get_scene` -- input: `{}`, returns `Scene`
+  - `clear_scene` -- input: `{ confirm: true }`, returns `{ cleared: number }`
+  - `export_scene` -- input: `{ format: 'json'|'svg'|'png' }`, returns `{ format, data: string | base64 }`
 - 모든 input 은 zod 로 runtime validation; 실패 시 MCP error code `-32602` (Invalid params).
 - `--db <path>` CLI 플래그로 `SqliteSceneStore` 선택; 미지정 시 in-memory.
 - 매 변경 시 `bridgePublisher` (step 5) 로 scene-delta push.
@@ -42,7 +42,7 @@ pnpm --filter @archidraw/mcp-server build
 pnpm --filter @archidraw/mcp-server test
 ```
 
-Exit 0. 커밋: `feat(archidraw-mvp): step 3 — mcp`.
+Exit 0. 커밋: `feat(archidraw-mvp): step 3 -- mcp`.
 
 ## Don't
 

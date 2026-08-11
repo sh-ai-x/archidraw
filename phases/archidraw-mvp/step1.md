@@ -1,4 +1,4 @@
-# Step 1 — schema
+# Step 1 -- schema
 
 Status: pending
 
@@ -18,7 +18,7 @@ Status: pending
 - type 별 추가 필드: `arrow` 는 `points`, `startBinding`, `endBinding`, `startArrowhead`, `endArrowhead`; `text` 는 `fontSize`, `fontFamily`, `text`, `textAlign`, `verticalAlign`, `containerId`, `originalText`, `lineHeight`, `baseline`; `freedraw` 는 `points`, `simulatePressure`, `lastCommittedPoint`.
 - `ExcalidrawScene` 타입: `{ type: 'excalidraw', version: number, source: string, elements: Element[], appState: AppState, files: Record<string, ImageFile> }`.
 - zod: `ExcalidrawElementSchema` (passthrough for extension fields like `seed`), `ExcalidrawSceneSchema`, `CreateElementInputSchema`, `UpdateElementInputSchema`, `DeleteElementInputSchema`, `QueryElementsInputSchema`.
-- `roundtrip.test.ts`: element 100 개 생성 → `JSON.stringify` → `JSON.parse` → deep-equal 통과.
+- `roundtrip.test.ts`: element 100 개 생성 -> `JSON.stringify` -> `JSON.parse` -> deep-equal 통과.
 
 ## Acceptance criteria
 
@@ -34,10 +34,10 @@ pnpm --filter @archidraw/schema typecheck
 pnpm --filter @archidraw/schema test
 ```
 
-Exit code 0 expected. `phases/archidraw-mvp/index.json` 의 step 1 status 를 `pending → in_progress → completed` 로 전이. 커밋: `feat(archidraw-mvp): step 1 — schema`.
+Exit code 0 expected. `phases/archidraw-mvp/index.json` 의 step 1 status 를 `pending -> in_progress -> completed` 로 전이. 커밋: `feat(archidraw-mvp): step 1 -- schema`.
 
 ## Don't
 
-- Excalidraw core React 컴포넌트 의존 추가 금지 (`@excalidraw/excalidraw` 등) — schema 는 데이터 표현만
+- Excalidraw core React 컴포넌트 의존 추가 금지 (`@excalidraw/excalidraw` 등) -- schema 는 데이터 표현만
 - 별도 ORM/DB 라이브러리 도입 금지 (영속화는 step 2 의 책임)
 - `seed` 필드를 zod 가 strip 하지 않게 passthrough 유지 (hand-drawn 비주얼 위해)

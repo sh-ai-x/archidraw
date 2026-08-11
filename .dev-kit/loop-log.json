@@ -43,5 +43,5 @@
   "narrowed_delta_total": 5,
   "dedup_metric": null,
   "user_interrupt": false,
-  "narrative": "Initial evidence + revised value after cost lever; ambiguity loop narrowed 10 → 8 → 6 → 5; accepted at 5 as best-effort."
+  "narrative": "Initial evidence + revised value after cost lever; ambiguity loop narrowed 10 -> 8 -> 6 -> 5; accepted at 5 as best-effort."
 }
