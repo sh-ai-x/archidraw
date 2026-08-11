@@ -15,4 +15,4 @@ Bash	git -C /Users/sanghee/dev/archidraw ls-tree origin/main packages/store/ 2>&
 Bash	git -C /Users/sanghee/dev/archidraw ls-tree origin/main packages/schema/ 2>&1; e
 Bash	for f in package.json packages/schema/package.json packages/schema/src/index.ts 
 Bash	rm -f /Users/sanghee/dev/archidraw/.git/worktrees/step2-resolve/index.lock 2>&1;
-Bash	git -C /Users/sanghee/dev/archidraw worktree add -B plan/archidraw-mvp-step4-res
+Bash	git -C /Users/sanghee/dev/archidraw fetch origin 2>&1; echo "---resolve #15 (mcp
