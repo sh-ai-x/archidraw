@@ -84,7 +84,7 @@
       "step": 5,
       "name": "bridge",
       "owner": "backend-architect",
-      "status": "pending",
+      "status": "completed",
       "summary": "Local SSE bridge (MCP <-> GUI 양방향 scene-delta) + transport swappable interface",
       "dependencies": ["step-2", "step-3", "step-4"],
       "files": [
@@ -99,7 +99,7 @@
       "step": 6,
       "name": "e2e",
       "owner": "general-purpose",
-      "status": "pending",
+      "status": "completed",
       "summary": "Playwright 4-단계 시나리오 (draw -> query -> update -> delete) + 스크린샷 4 장 + report.md",
       "dependencies": ["step-3", "step-4", "step-5"],
       "files": [
@@ -113,7 +113,7 @@
       "step": 7,
       "name": "release",
       "owner": "backend-architect",
-      "status": "pending",
+      "status": "completed",
       "summary": "pnpm -r build, root package.json scripts, README quickstart + Claude Code MCP 등록 스니펫 + Try-this-prompt",
       "dependencies": ["step-1", "step-2", "step-3", "step-4", "step-5", "step-6"],
       "files": [

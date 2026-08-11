@@ -2,10 +2,14 @@
   "name": "archidraw",
   "private": true,
   "packageManager": "pnpm@10.18.0",
+  "workspaces": ["packages/*", "e2e"],
   "scripts": {
+    "dev:gui": "pnpm --filter @archidraw/gui dev --host 127.0.0.1 --port 5173",
+    "dev:mcp": "node packages/mcp-server/dist/index.js",
+    "dev:bridge": "node packages/bridge/dist/cli.js",
+    "e2e": "pnpm --filter @archidraw/e2e test",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test"
   }
 }
-
