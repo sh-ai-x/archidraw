@@ -1,0 +1,25 @@
+Bash	sed -n '1,240p' /Users/sanghee/.codex/plugins/cache/dev-kit/dev-kit/0.3.245/skil
+Bash	git status --short --branch && sed -n '1,260p' PRD.md && printf '\n---STEP3---\n
+Bash	git status --short; git ls-tree -r --name-only plan/archidraw-mvp-step5 | rg '^(
+Bash	find ../archidraw-mvp-step{3,4,5} -maxdepth 3 -type f -name package.json -o -nam
+Bash	find ../archidraw-mvp-step5/node_modules -maxdepth 2 -type d -name '@playwright'
+Bash	chmod +x e2e/bin/archidraw-mcp && git status --short
+Bash	pnpm --filter @archidraw/e2e test
+Bash	playwright --help | head -80; ls -l /opt/homebrew/bin/playwright; head -3 /opt/h
+Bash	pnpm add --filter @archidraw/e2e -D @playwright/test@1.52.0
+Bash	git status --short; sed -n '1,120p' e2e/package.json; test -x e2e/node_modules/.
+Bash	pnpm --filter @archidraw/e2e test
+Bash	pnpm --filter @archidraw/e2e test
+Bash	pnpm --filter @archidraw/e2e test
+Bash	pnpm --filter @archidraw/e2e test
+Bash	pnpm --filter @archidraw/e2e exec playwright install chromium-headless-shell
+Bash	pnpm --filter @archidraw/e2e test
+Bash	pnpm --filter @archidraw/e2e test
+Bash	node e2e/fixtures/servers.mjs & pid=$!; sleep 1; curl -s -X POST http://127.0.0.
+Bash	pnpm --filter @archidraw/e2e test
+Bash	git status --short; find e2e/screenshots -maxdepth 1 -type f -print | sort; sed 
+Bash	find e2e -maxdepth 2 -type f | sort | sed -n '1,160p'; git status --short --untr
+Bash	git add pnpm-workspace.yaml pnpm-lock.yaml e2e && git status --short && git comm
+Bash	git commit -m 'feat(archidraw-mvp): step 6 -- e2e'
+Bash	git add pnpm-workspace.yaml pnpm-lock.yaml e2e && git commit -m 'feat(archidraw-
+Bash	git status --short --branch; git log -1 --oneline; git show --stat --oneline --s
