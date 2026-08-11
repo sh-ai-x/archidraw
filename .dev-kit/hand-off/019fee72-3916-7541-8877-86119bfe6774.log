@@ -1,0 +1,5 @@
+Bash	sed -n '1,240p' /Users/sanghee/.codex/plugins/cache/dev-kit/dev-kit/0.3.242/skil
+Bash	printf '%s\n' '--- workspace ---'; rg --files -g '!node_modules' | sort | head -
+Bash	ls -la; find . -maxdepth 3 -type f | sort | head -300; find .. -maxdepth 3 -type
+Bash	for d in ../archidraw-mvp-step1 ../archidraw-mvp-step2 ../archidraw-mvp-step3 ..
+Bash	find /Users/sanghee/dev/archidraw -maxdepth 4 -type f \( -name package.json -o -
