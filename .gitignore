@@ -9,3 +9,6 @@
 .dev-kit/logs/
 logs/
 # <<< dev-kit <<<
+node_modules/
+dist/
+.pnpm-store/
