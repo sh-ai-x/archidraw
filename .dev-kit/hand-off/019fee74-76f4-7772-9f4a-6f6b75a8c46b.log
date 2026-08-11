@@ -1,0 +1,8 @@
+Bash	sed -n '1,240p' /Users/sanghee/.codex/skills/r4/browser/26.623.141536/skills/con
+Bash	find /Users/sanghee/.codex/plugins/cache/openai-bundled -path '*/control-in-app-
+Bash	sed -n '1,240p' /Users/sanghee/.codex/plugins/cache/openai-bundled/browser/26.62
+Bash	find /Users/sanghee/dev/archidraw -maxdepth 4 \( -name package.json -o -name pnp
+Bash	find /Users/sanghee/dev/archidraw/.worktrees/archidraw-mvp-step{3,4,5} -type f |
+Bash	cat /Users/sanghee/dev/archidraw/.git/worktrees/archidraw-mvp-step{3,4,5,6}/HEAD
+Bash	for d in ../archidraw-mvp-step{1,2,3,4,5}; do echo "--- $d"; find "$d" -maxdepth
+Bash	timeout 5 pnpm --version; timeout 5 pnpm store path; ls -la /Users/sanghee/Libra
