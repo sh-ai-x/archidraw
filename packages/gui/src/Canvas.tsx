@@ -9,11 +9,11 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
   const pointerDownPos=useRef<{x:number;y:number;hit:Element|null}|null>(null);
   const DRAGGING_THRESHOLD=3;const elements=store.queryElements();useEffect(()=>{const c=ref.current;if(!c)return;const resize=()=>{c.width=c.clientWidth*devicePixelRatio;c.height=c.clientHeight*devicePixelRatio;renderScene(c,elements,zoom,pan,selected,marquee)};resize();window.addEventListener("resize",resize);return()=>window.removeEventListener("resize",resize)},[elements,zoom,pan,selected,marquee]);useEffect(()=>{const onKey=(e:KeyboardEvent)=>{const map:{[key:string]:Tool}={h:"hand",v:"select",r:"rectangle",d:"diamond",o:"ellipse",a:"arrow",l:"line",t:"text",p:"freedraw"};if(map[e.key.toLowerCase()])setTool(map[e.key.toLowerCase()]);
       if(e.key==="Escape"){setSelected(null);if(tool!=="select")setTool("select");return}
-      if(e.key==="Delete"||e.key==="Backspace"){const ids=multiSel.length?multiSel:(selected?[selected]:[]);ids.forEach(id=>store.deleteElement(id));if(ids.length){setSelected(null);setMultiSel([])}}
+      if(e.key==="Delete"||e.key==="Backspace"){e.preventDefault();const ids=multiSel.length?multiSel:(selected?[selected]:[]);ids.forEach(id=>store.deleteElement(id));if(ids.length){setSelected(null);setMultiSel([])}}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="z"){e.preventDefault();if(e.shiftKey){if(store.redo()){setSelected(null);setMultiSel([])}}else{if(store.undo()){setSelected(null);setMultiSel([])}}}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="y"){e.preventDefault();if(store.redo()){setSelected(null);setMultiSel([])}}
       if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&e.key.toLowerCase()==="a"){e.preventDefault();setMultiSel(elements.map(e=>e.id));setSelected(null)}
-      if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="d"){e.preventDefault();multiSel.forEach(id=>{const el=elements.find(x=>x.id===id);if(el)store.createElement({...el,id:crypto.randomUUID()})});selected&&store.createElement({...elements.find(x=>x.id===selected)!,id:crypto.randomUUID()})}};window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey)},[selected,store,setTool]);const world=(e:React.PointerEvent)=>{const r=ref.current!.getBoundingClientRect();return {x:(e.clientX-r.left-pan.x)/zoom,y:(e.clientY-r.top-pan.y)/zoom}};return <canvas ref={ref} data-testid="canvas" className={"canvas tool-"+tool+(drag.current?" dragging":"")+(tool==="select"&&hovering?" hovering":"")} onDoubleClick={e=>{const p=world(e);if(tool!=="select")return;const hit=[...elements].reverse().find(el=>el.type==="text"&&pointInElement(el,p.x,p.y,8));if(hit){const next=window.prompt("Edit text:",String((hit as any).text||""));if(next!==null&&next.trim()!=="")store.updateElement(hit.id,{text:next,originalText:next} as any)}}} onWheel={e=>{e.preventDefault();setZoom(z=>Math.max(.1,Math.min(8,z*(e.deltaY<0?1.1:.9))))}} onPointerDown={e=>{
+      if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="d"){e.preventDefault();multiSel.forEach(id=>{const el=elements.find(x=>x.id===id);if(el)store.createElement({...el,id:crypto.randomUUID()})});selected&&store.createElement({...elements.find(x=>x.id===selected)!,id:crypto.randomUUID()})}};window.addEventListener("keydown",onKey);return()=>window.removeEventListener("keydown",onKey)},[selected,multiSel,store,setTool,setMultiSel,setMarquee,elements]);const world=(e:React.PointerEvent)=>{const r=ref.current!.getBoundingClientRect();return {x:(e.clientX-r.left-pan.x)/zoom,y:(e.clientY-r.top-pan.y)/zoom}};return <canvas ref={ref} data-testid="canvas" className={"canvas tool-"+tool+(drag.current?" dragging":"")+(tool==="select"&&hovering?" hovering":"")} onDoubleClick={e=>{const p=world(e);if(tool!=="select")return;const hit=[...elements].reverse().find(el=>el.type==="text"&&pointInElement(el,p.x,p.y,8));if(hit){const next=window.prompt("Edit text:",String((hit as any).text||""));if(next!==null&&next.trim()!=="")store.updateElement(hit.id,{text:next,originalText:next} as any)}}} onWheel={e=>{e.preventDefault();setZoom(z=>Math.max(.1,Math.min(8,z*(e.deltaY<0?1.1:.9))))}} onPointerDown={e=>{
         const p=world(e);
         // Middle-mouse OR Space-held → start a pan gesture (works regardless of tool).
         if(e.button===1||e.getModifierState("Space")||tool==="hand"){
@@ -59,6 +59,15 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         setHovering(false);
       }} onPointerMove={e=>{
+        // Stale-event guard: if no buttons are pressed, this is a stray
+        // pointermove (e.g. from trackpad release jitter). Clean up and bail.
+        if(e.buttons===0){
+          drag.current=null;
+          pointerDownPos.current=null;
+          setMarquee(null);
+          setHovering(false);
+          return;
+        }
         const pHover=world(e);
         // Threshold-based gesture commit (Excalidraw pattern).
         // If we have a pending pointerDownPos but no committed drag, check distance.
