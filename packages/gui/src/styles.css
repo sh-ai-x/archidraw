@@ -5,3 +5,17 @@
 .canvas.tool-select.hovering{cursor:grab}
 .canvas.tool-select.dragging{cursor:grabbing}
 .canvas.tool-text{cursor:text}.zoom-label{position:absolute;right:20px;bottom:18px;border:1px solid #e2e8f0;background:#fff;border-radius:6px;padding:6px 10px;color:#64748b;font-size:12px}
+.help-fab{position:absolute;right:20px;top:18px;width:34px;height:34px;border-radius:50%;background:#fff;border:1px solid #e2e8f0;color:#475569;font-weight:600;cursor:pointer;box-shadow:0 1px 3px #00000014;z-index:3}
+.help-fab:hover{background:#e0e7ff;color:#4338ca;border-color:#c7d2fe}
+.help-modal-backdrop{position:fixed;inset:0;background:#0f172aa0;display:flex;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(2px)}
+.help-modal{background:#fff;border-radius:12px;max-width:560px;width:90vw;max-height:80vh;overflow:auto;box-shadow:0 20px 50px #00000040;padding:0}
+.help-modal-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #e5e7eb}
+.help-modal-head h2{margin:0;font-size:18px;color:#0f172a}
+.help-modal-close{background:transparent;border:0;font-size:24px;color:#64748b;cursor:pointer;line-height:1;padding:4px 10px;border-radius:6px}
+.help-modal-close:hover{background:#f1f5f9;color:#0f172a}
+.help-modal-body{padding:18px 22px 22px;display:grid;gap:18px}
+.help-modal-body section h3{margin:0 0 8px 0;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;font-weight:600}
+.help-modal-body table{width:100%;border-collapse:collapse}
+.help-modal-body td{padding:4px 0;vertical-align:top;font-size:14px;color:#1f2937}
+.help-modal-body td:first-child{width:38%;padding-right:12px}
+.help-modal-body kbd{display:inline-block;font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:4px;padding:1px 6px;color:#0f172a}
