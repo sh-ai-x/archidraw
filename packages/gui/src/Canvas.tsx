@@ -4,7 +4,10 @@ import {makeElement,pointInElement,type SceneStore,type Tool} from "./scene";
 import {renderScene} from "./Renderer";
 export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:(tool:Tool)=>void}){const ref=useRef<HTMLCanvasElement>(null);const [zoom,setZoom]=useState(1);const [pan,setPan]=useState({x:0,y:0});const [selected,setSelected]=useState<string|null>(null);
   const [hovering,setHovering]=useState(false);
-  const [marquee,setMarquee]=useState<{x1:number;y1:number;x2:number;y2:number}|null>(null);const drag=useRef<{x:number;y:number;id?:string;start?:Element;space?:boolean}|null>(null);const elements=store.queryElements();useEffect(()=>{const c=ref.current;if(!c)return;const resize=()=>{c.width=c.clientWidth*devicePixelRatio;c.height=c.clientHeight*devicePixelRatio;renderScene(c,elements,zoom,pan,selected,marquee)};resize();window.addEventListener("resize",resize);return()=>window.removeEventListener("resize",resize)},[elements,zoom,pan,selected,marquee]);useEffect(()=>{const onKey=(e:KeyboardEvent)=>{const map:{[key:string]:Tool}={h:"hand",v:"select",r:"rectangle",d:"diamond",o:"ellipse",a:"arrow",l:"line",t:"text",p:"freedraw"};if(map[e.key.toLowerCase()])setTool(map[e.key.toLowerCase()]);
+  const [marquee,setMarquee]=useState<{x1:number;y1:number;x2:number;y2:number}|null>(null);const drag=useRef<{x:number;y:number;id?:string;start?:Element;space?:boolean;gesture:"none"|"drag-element"|"pan-marquee"}|null>(null);
+  // Pointer-down start position; threshold-based gesture discrimination (Excalidraw pattern).
+  const pointerDownPos=useRef<{x:number;y:number;hit:Element|null}|null>(null);
+  const DRAGGING_THRESHOLD=3;const elements=store.queryElements();useEffect(()=>{const c=ref.current;if(!c)return;const resize=()=>{c.width=c.clientWidth*devicePixelRatio;c.height=c.clientHeight*devicePixelRatio;renderScene(c,elements,zoom,pan,selected,marquee)};resize();window.addEventListener("resize",resize);return()=>window.removeEventListener("resize",resize)},[elements,zoom,pan,selected,marquee]);useEffect(()=>{const onKey=(e:KeyboardEvent)=>{const map:{[key:string]:Tool}={h:"hand",v:"select",r:"rectangle",d:"diamond",o:"ellipse",a:"arrow",l:"line",t:"text",p:"freedraw"};if(map[e.key.toLowerCase()])setTool(map[e.key.toLowerCase()]);
       if(e.key==="Escape"){setSelected(null);if(tool!=="select")setTool("select");return}
       if(e.key==="Delete"||e.key==="Backspace"){const ids=multiSel.length?multiSel:(selected?[selected]:[]);ids.forEach(id=>store.deleteElement(id));if(ids.length){setSelected(null);setMultiSel([])}}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="z"){e.preventDefault();if(e.shiftKey){if(store.redo()){setSelected(null);setMultiSel([])}}else{if(store.undo()){setSelected(null);setMultiSel([])}}}
@@ -14,21 +17,20 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
         const p=world(e);
         // Middle-mouse OR Space-held → start a pan gesture (works regardless of tool).
         if(e.button===1||e.getModifierState("Space")||tool==="hand"){
-          drag.current={...p,space:true};
+          // Hand tool / middle-mouse / Space → pan immediately, no threshold.
+          drag.current={...p,space:true,gesture:"none"};
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           return;
         }
         if(tool==="select"){
-          // Hit-test against existing elements; tolerate 8px outside bounds.
+          // Record start position. We commit to drag-element vs marquee only
+          // once movement exceeds DRAGGING_THRESHOLD (3px) to avoid the
+          // classic Excalidraw bug: a tiny mouse jitter between pointerdown
+          // and pointerup re-interprets the gesture as a new click.
           const hit=[...elements].reverse().find(el=>pointInElement(el,p.x,p.y,8));
           setSelected(hit?.id??null);
-          if(hit){
-            drag.current={...p,id:hit.id,start:hit};
-          } else {
-            // Empty space → start a marquee selection rectangle.
-            setMarquee({x1:p.x,y1:p.y,x2:p.x,y2:p.y});
-            setMultiSel([]);
-          }
+          pointerDownPos.current={x:p.x,y:p.y,hit:hit??null};
+          drag.current=null; // do NOT commit yet
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           return;
         }
@@ -58,6 +60,26 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
         setHovering(false);
       }} onPointerMove={e=>{
         const pHover=world(e);
+        // Threshold-based gesture commit (Excalidraw pattern).
+        // If we have a pending pointerDownPos but no committed drag, check distance.
+        if(pointerDownPos.current&&!drag.current){
+          const ddx=pHover.x-pointerDownPos.current.x;
+          const ddy=pHover.y-pointerDownPos.current.y;
+          if(Math.hypot(ddx,ddy)>=DRAGGING_THRESHOLD){
+            if(pointerDownPos.current.hit){
+              drag.current={x:pointerDownPos.current.x,y:pointerDownPos.current.y,id:pointerDownPos.current.hit.id,start:pointerDownPos.current.hit,space:false};
+            } else {
+              setMarquee({x1:pointerDownPos.current.x,y1:pointerDownPos.current.y,x2:pHover.x,y2:pHover.y});
+              setMultiSel([]);
+            }
+            pointerDownPos.current=null;
+          } else {
+            // Below threshold — hover only.
+            const hit=[...elements].reverse().find(el=>pointInElement(el,pHover.x,pHover.y,8));
+            setHovering(!!hit);
+            return;
+          }
+        }
         // Marquee selection in progress — update its rectangle.
         if(marquee){
           setMarquee(m=>m?{...m,x2:pHover.x,y2:pHover.y}:null);
@@ -87,5 +109,5 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
         } else {
           store.updateElement(id,{width:d.x,height:d.y});
         }
-      }} onPointerCancel={e=>{drag.current=null;setMarquee(null);setHovering(false);try{(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)}catch{}}}
-        onPointerUp={e=>{try{(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)}catch{};if(marquee){const left=Math.min(marquee.x1,marquee.x2)-4;const right=Math.max(marquee.x1,marquee.x2)+4;const top=Math.min(marquee.y1,marquee.y2)-4;const bottom=Math.max(marquee.y1,marquee.y2)+4;const hits=elements.filter(el=>{const elLeft=Math.min(el.x,el.x+el.width);const elRight=Math.max(el.x,el.x+el.width);const elTop=Math.min(el.y,el.y+el.height);const elBottom=Math.max(el.y,el.y+el.height);return elLeft>=left&&elRight<=right&&elTop>=top&&elBottom<=bottom;}).map(el=>el.id);setMultiSel(hits);setSelected(hits[hits.length-1]??null);setMarquee(null)};drag.current=null}}/>}
+      }} onPointerCancel={e=>{drag.current=null;setMarquee(null);setHovering(false);pointerDownPos.current=null;try{(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)}catch{}}}
+        onPointerUp={e=>{try{(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)}catch{};if(marquee){const left=Math.min(marquee.x1,marquee.x2)-4;const right=Math.max(marquee.x1,marquee.x2)+4;const top=Math.min(marquee.y1,marquee.y2)-4;const bottom=Math.max(marquee.y1,marquee.y2)+4;const hits=elements.filter(el=>{const elLeft=Math.min(el.x,el.x+el.width);const elRight=Math.max(el.x,el.x+el.width);const elTop=Math.min(el.y,el.y+el.height);const elBottom=Math.max(el.y,el.y+el.height);return elLeft>=left&&elRight<=right&&elTop>=top&&elBottom<=bottom;}).map(el=>el.id);setMultiSel(hits);setSelected(hits[hits.length-1]??null);setMarquee(null);setHovering(false)}else if(pointerDownPos.current&&!drag.current){const stillHit=pointerDownPos.current.hit;setSelected(stillHit?.id??null)};drag.current=null;pointerDownPos.current=null}}/>}
