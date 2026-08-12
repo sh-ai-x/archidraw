@@ -1,5 +1,5 @@
 import type {Element, ExcalidrawScene, Point} from "@archidraw/schema";
-export type Tool="select"|"rectangle"|"ellipse"|"diamond"|"arrow"|"line"|"text"|"erase";
+export type Tool="hand"|"select"|"rectangle"|"ellipse"|"diamond"|"arrow"|"line"|"text"|"erase";
 export type ElementPatch=Partial<Element> & Record<string, unknown>;
 export interface SceneStore {getScene():ExcalidrawScene; queryElements():Element[]; updateElement(id:string, updates:ElementPatch):void; deleteElement(id:string):void; createElement(element:Element):void; undo():boolean; redo():boolean; canUndo():boolean; canRedo():boolean}
 const KEY="archidraw:scene";

@@ -1,4 +1,6 @@
 :root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#1f2937;background:#f8fafc}*{box-sizing:border-box}html,body,#root{margin:0;width:100%;height:100%;overflow:hidden}.app{width:100%;height:100%;display:flex;background:#f8fafc}.toolbar{z-index:2;width:64px;padding:14px 10px;display:flex;flex-direction:column;gap:8px;background:#fff;border-right:1px solid #e5e7eb;box-shadow:2px 0 10px #0000000b}.toolbar button{height:42px;border:0;border-radius:9px;background:transparent;color:#64748b;font-size:22px;cursor:pointer}.toolbar button:hover,.toolbar button.active{background:#e0e7ff;color:#4338ca}.tool-icon{display:block;line-height:42px}.canvas-shell{position:relative;flex:1;background-color:#f8fafc;background-image:radial-gradient(#cbd5e1 1px,transparent 1px);background-size:24px 24px}.canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair}
+.canvas.tool-hand{cursor:grab}
+.canvas.tool-hand.dragging{cursor:grabbing}
 .canvas.tool-select{cursor:default}
 .canvas.tool-select.hovering{cursor:grab}
 .canvas.tool-select.dragging{cursor:grabbing}
