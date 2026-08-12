@@ -3,7 +3,8 @@ import type {Element} from "@archidraw/schema";
 import {makeElement,pointInElement,type SceneStore,type Tool} from "./scene";
 import {renderScene} from "./Renderer";
 export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:(tool:Tool)=>void}){const ref=useRef<HTMLCanvasElement>(null);const [zoom,setZoom]=useState(1);const [pan,setPan]=useState({x:0,y:0});const [selected,setSelected]=useState<string|null>(null);
-  const [hovering,setHovering]=useState(false);const drag=useRef<{x:number;y:number;id?:string;start?:Element;space?:boolean}|null>(null);const elements=store.queryElements();useEffect(()=>{const c=ref.current;if(!c)return;const resize=()=>{c.width=c.clientWidth*devicePixelRatio;c.height=c.clientHeight*devicePixelRatio;renderScene(c,elements,zoom,pan,selected)};resize();window.addEventListener("resize",resize);return()=>window.removeEventListener("resize",resize)},[elements,zoom,pan,selected]);useEffect(()=>{const onKey=(e:KeyboardEvent)=>{const map:{[key:string]:Tool}={v:"select",r:"rectangle",o:"ellipse",a:"arrow",t:"text",p:"freedraw"};if(map[e.key.toLowerCase()])setTool(map[e.key.toLowerCase()]);
+  const [hovering,setHovering]=useState(false);
+  const [marquee,setMarquee]=useState<{x1:number;y1:number;x2:number;y2:number}|null>(null);const drag=useRef<{x:number;y:number;id?:string;start?:Element;space?:boolean}|null>(null);const elements=store.queryElements();useEffect(()=>{const c=ref.current;if(!c)return;const resize=()=>{c.width=c.clientWidth*devicePixelRatio;c.height=c.clientHeight*devicePixelRatio;renderScene(c,elements,zoom,pan,selected,marquee)};resize();window.addEventListener("resize",resize);return()=>window.removeEventListener("resize",resize)},[elements,zoom,pan,selected,marquee]);useEffect(()=>{const onKey=(e:KeyboardEvent)=>{const map:{[key:string]:Tool}={v:"select",r:"rectangle",o:"ellipse",a:"arrow",t:"text"};if(map[e.key.toLowerCase()])setTool(map[e.key.toLowerCase()]);
       if((e.key==="Delete"||e.key==="Backspace")&&selected){store.deleteElement(selected);setSelected(null)}
       if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="z"){
         e.preventDefault();
@@ -25,7 +26,13 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
           // Hit-test against existing elements; tolerate 8px outside bounds.
           const hit=[...elements].reverse().find(el=>pointInElement(el,p.x,p.y,8));
           setSelected(hit?.id??null);
-          if(hit)drag.current={...p,id:hit.id,start:hit};
+          if(hit){
+            drag.current={...p,id:hit.id,start:hit};
+          } else {
+            // Empty space → start a marquee selection rectangle.
+            setMarquee({x1:p.x,y1:p.y,x2:p.x,y2:p.y});
+            setMultiSel([]);
+          }
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           return;
         }
@@ -54,14 +61,20 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         setHovering(false);
       }} onPointerMove={e=>{
+        const pHover=world(e);
+        // Marquee selection in progress — update its rectangle.
+        if(marquee){
+          setMarquee(m=>m?{...m,x2:pHover.x,y2:pHover.y}:null);
+          setHovering(false);
+          return;
+        }
         // Hover detection: drives grab/grabbing cursor when in select tool.
         if(!drag.current){
-          const pHover=world(e);
           const hit=[...elements].reverse().find(el=>pointInElement(el,pHover.x,pHover.y,8));
           setHovering(!!hit);
           return;
         }
-        const p=world(e);
+        const p=pHover;
         const d={x:p.x-drag.current.x,y:p.y-drag.current.y};
         if(drag.current.space){setPan(v=>({x:v.x+d.x*zoom,y:v.y+d.y*zoom}));drag.current={...p,space:true};return}
         const id=drag.current.id;
@@ -73,18 +86,28 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
           // Avoids cumulative drift from delta accumulation when the user moves slowly.
           const dx=start.x-(drag.current.x-d.x),dy=start.y-(drag.current.y-d.y);
           store.updateElement(id,{x:start.x+d.x,y:start.y+d.y});
-        } else if(tool==="freedraw"){
-          // Accumulate world-space points relative to element origin so perfect-freehand can render.
-          const px=p.x-start.x, py=p.y-start.y;
-          const existing=(start.type==="freedraw"?start.points:[])as Array<[number,number]>;
-          const last=existing[existing.length-1];
-          // Skip near-duplicate points (within 2px) so the stroke isn't 1000 segments of jitter.
-          if(!last||Math.hypot(px-last[0],py-last[1])>2){
-            store.updateElement(id,{points:[...existing,[px,py]] as any});
-          }
         } else if(tool==="arrow"||tool==="line"){
           store.updateElement(id,{points:[[0,0],[d.x,d.y]] as any});
         } else {
           store.updateElement(id,{width:d.x,height:d.y});
         }
-      }} onPointerUp={()=>{drag.current=null}}/>}
+      }} onPointerUp={()=>{
+        // Finalize marquee: select all elements within the rectangle (with 4px slack).
+        if(marquee){
+          const left=Math.min(marquee.x1,marquee.x2)-4;
+          const right=Math.max(marquee.x1,marquee.x2)+4;
+          const top=Math.min(marquee.y1,marquee.y2)-4;
+          const bottom=Math.max(marquee.y1,marquee.y2)+4;
+          const hits=elements.filter(el=>{
+            const elLeft=Math.min(el.x,el.x+el.width);
+            const elRight=Math.max(el.x,el.x+el.width);
+            const elTop=Math.min(el.y,el.y+el.height);
+            const elBottom=Math.max(el.y,el.y+el.height);
+            return elLeft>=left&&elRight<=right&&elTop>=top&&elBottom<=bottom;
+          }).map(el=>el.id);
+          setMultiSel(hits);
+          setSelected(hits[hits.length-1]??null);
+          setMarquee(null);
+        }
+        drag.current=null;
+      }}/>}
