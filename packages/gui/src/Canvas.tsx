@@ -87,23 +87,5 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
         } else {
           store.updateElement(id,{width:d.x,height:d.y});
         }
-      }} onPointerUp={()=>{
-        // Finalize marquee: select all elements within the rectangle (with 4px slack).
-        if(marquee){
-          const left=Math.min(marquee.x1,marquee.x2)-4;
-          const right=Math.max(marquee.x1,marquee.x2)+4;
-          const top=Math.min(marquee.y1,marquee.y2)-4;
-          const bottom=Math.max(marquee.y1,marquee.y2)+4;
-          const hits=elements.filter(el=>{
-            const elLeft=Math.min(el.x,el.x+el.width);
-            const elRight=Math.max(el.x,el.x+el.width);
-            const elTop=Math.min(el.y,el.y+el.height);
-            const elBottom=Math.max(el.y,el.y+el.height);
-            return elLeft>=left&&elRight<=right&&elTop>=top&&elBottom<=bottom;
-          }).map(el=>el.id);
-          setMultiSel(hits);
-          setSelected(hits[hits.length-1]??null);
-          setMarquee(null);
-        }
-        drag.current=null;
-      }}/>}
+      }} onPointerCancel={e=>{drag.current=null;setMarquee(null);setHovering(false);try{(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)}catch{}}}
+        onPointerUp={e=>{try{(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)}catch{};if(marquee){const left=Math.min(marquee.x1,marquee.x2)-4;const right=Math.max(marquee.x1,marquee.x2)+4;const top=Math.min(marquee.y1,marquee.y2)-4;const bottom=Math.max(marquee.y1,marquee.y2)+4;const hits=elements.filter(el=>{const elLeft=Math.min(el.x,el.x+el.width);const elRight=Math.max(el.x,el.x+el.width);const elTop=Math.min(el.y,el.y+el.height);const elBottom=Math.max(el.y,el.y+el.height);return elLeft>=left&&elRight<=right&&elTop>=top&&elBottom<=bottom;}).map(el=>el.id);setMultiSel(hits);setSelected(hits[hits.length-1]??null);setMarquee(null)};drag.current=null}}/>}
