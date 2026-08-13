@@ -8,7 +8,7 @@ export interface BridgeServerOptions {
   port?: number;
 }
 
-const ALLOWED_ORIGIN = "http://localhost:5173";
+const ALLOWED_ORIGIN = new Set(["http://localhost:5173", "http://127.0.0.1:5173"]);
 
 /** Localhost-only SSE bridge. It intentionally multiplexes element deltas only. */
 export class BridgeServer implements BridgeTransport {
@@ -66,11 +66,11 @@ export class BridgeServer implements BridgeTransport {
 
   private handle(request: IncomingMessage, response: ServerResponse): void {
     const origin = request.headers.origin;
-    if (origin === ALLOWED_ORIGIN) response.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
+    if (ALLOWED_ORIGIN.has(origin)) response.setHeader("Access-Control-Allow-Origin", origin);
     response.setHeader("Vary", "Origin");
 
     if (request.method === "OPTIONS") {
-      if (origin !== ALLOWED_ORIGIN) { response.writeHead(403); response.end(); return; }
+      if (!ALLOWED_ORIGIN.has(origin)) { response.writeHead(403); response.end(); return; }
       response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       response.setHeader("Access-Control-Allow-Headers", "content-type");
       response.writeHead(204); response.end(); return;
