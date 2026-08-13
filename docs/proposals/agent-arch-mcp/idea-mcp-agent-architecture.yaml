@@ -1,0 +1,115 @@
+title: MCP-based Agent Architecture with Structured Data
+slug: idea-mcp-agent-architecture
+status: draft
+author: dev-kit:evidence-plan
+date: 2026-08-13
+based_on: /tmp/mcp-agent-research.md
+
+summary: |
+  Adopt MCP as the open standard for the agent's tool surface, declare
+  all tool inputs in JSON Schema generated from a single source of
+  truth (Zod for TypeScript, Pydantic for Python), and use stdio for
+  local tools + Streamable HTTP for remote ones. Archidraw's existing
+  9-tool MCP server is a working reference implementation.
+
+background: |
+  - The agent layer needs to call external tools (file ops, MCP servers,
+    REST APIs) and emit structured data (reports, evidence) — both have
+    well-defined schema requirements.
+  - Without a single tool standard, every LLM client re-implements tool
+    glue. Anthropic's MCP and OpenAI's function calling share JSON
+    Schema semantics but differ in transport and state model.
+  - /tmp/mcp-agent-research.md (Phase 1) collected 20+ cited sources
+    on MCP architecture, transport, schema conventions, and archidraw's
+    reference implementation.
+
+current_state: |
+  archidraw already implements a canonical MCP architecture:
+  - packages/schema/src/zod.ts is the single source of truth for
+    element types, generated into both TypeScript types and JSON
+    Schema for the MCP inputSchema.
+  - packages/mcp-server/src/tools.ts registers 9 tools (create_element,
+    update_element, delete_element, query_elements, group_elements,
+    align_elements, get_scene, clear_scene, export_scene) using
+    @modelcontextprotocol/sdk stdio transport.
+  - packages/store/src/ provides MemorySceneStore and SqliteSceneStore
+    implementing the same SceneStore interface.
+  - packages/bridge/ provides HTTP+SSE bridge for GUI<->MCP sync,
+    with SceneStore.subscribe(callback) decoupling state from transport.
+
+  Missing for a "best practice" architecture:
+  - No tool-level input fuzzing or rate limiting (2026-04-15 OX
+    Security RCE advisory on stdio MCP applies).
+  - No parallel-tool-call batching at the LLM layer (only sequential).
+  - No streaming partial results back to the LLM (current responses
+    are full-or-nothing).
+
+proposed_change:
+  - id: 1
+    title: Standardize on MCP for all agent tool surfaces
+    detail: |
+      Use MCP for any new tool the agent needs. Transport: stdio for
+      local, Streamable HTTP for remote. Archidraw's stdio MCP server
+      is the canonical pattern. Reference the 9-tool design and
+      mirror its conventions.
+  - id: 2
+    title: Single source of truth for tool schema
+    detail: |
+      Zod for TypeScript (current archidraw choice). Pydantic v2 for
+      Python. Never duplicate the schema in the LLM prompt and the
+      runtime validator — drift causes silent failures.
+  - id: 3
+    title: Tool surface design rules
+    detail: |
+      snake_case verbs, one tool one job, limit count per server to
+      ~10-20, plain-language parameter descriptions, JSON-serializable
+      return values.
+  - id: 4
+    title: Strict mode + parallel tool calls
+    detail: |
+      Anthropic strict: true on every tool definition. OpenAI Structured
+      Outputs for final response. Parallel tool calls when independent
+      (saves 2 round-trips for 3-call batch).
+  - id: 5
+    title: Transport-decoupled state
+    detail: |
+      Store exposes subscribe(callback). MCP server, SSE bridge, future
+      WebSocket transport all attach via subscribe. Swapping stdio for
+      Streamable HTTP changes only the transport adapter.
+  - id: 6
+    title: Security hardening (post 2026-04-15 RCE advisory)
+    detail: |
+      Zod-validate every tool input at MCP server boundary. Rate-limit
+      per-tool per-client. Origin check for HTTP transports. Audit log
+      of every tool invocation.
+
+pros:
+  - Reuse across LLM clients (Claude Code, Codex, future clients) without per-client glue.
+  - Single schema source eliminates drift between LLM-facing schema and runtime validator.
+  - Strict mode catches bad arguments at the model layer, agent retries with corrected call.
+  - Decoupled state — same store feeds stdio MCP, HTTP SSE bridge, future transports.
+  - Parallel calls ~3x speedup for independent tool batches.
+
+cons:
+  - stdio MCP is a known RCE vector (2026-04-15 OX Security advisory); production needs validation + sandboxing.
+  - Strict mode supported by Anthropic + OpenAI but NOT by older OSS models.
+  - Transport negotiation fragile when both stdio and HTTP+SSE coexist.
+  - Tool count creep beyond LLM's effective selection accuracy (Anthropic recommends <20 tools).
+  - JSON-Patch delta pattern (archidraw's bridge) needs resync-on-reconnect to avoid lost patches.
+
+limitations:
+  - Operational architecture, not a research paper; no benchmarks vs LangChain / OpenAI Assistants API.
+  - Assumes MCP stays the standard (no deprecation signal from Anthropic).
+  - Zod-only on the TS side; Python components would need Pydantic mirror (real risk).
+  - Anthropic writing-tools-for-agents post is dated 2025-09-11; may evolve.
+  - archidraw is the only reference implementation in scope; other MCP servers may differ.
+
+references:
+  - /tmp/mcp-agent-research.md
+  - packages/mcp-server/src/tools.ts
+  - packages/schema/src/zod.ts
+  - https://www.anthropic.com/engineering/writing-tools-for-agents
+  - https://modelcontextprotocol.io/docs/2026-07-28/learn/architecture
+  - https://modelcontextprotocol.io/specification/2026-07-28/server/tools
+  - https://developers.openai.com/api/docs/guides/function-calling
+  - https://labs.cloudsecurityalliance.org/research/csa-research-note-mcp-rce-design-vulnerability-20260423-csa/

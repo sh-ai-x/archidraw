@@ -1,0 +1,42 @@
+title: MCP-based Agent Architecture — Phase 0 (Final Design Record)
+slug: mcp-agent-arch
+status: ready-for-review
+date: 2026-08-13
+author: dev-kit:evidence-plan
+prd: ../../../PRD.md
+phase_index: ../../../phases/mcp-agent-arch/index.json
+
+sections:
+  - title: Phase plan summary
+    body: |
+      Three phases (A: compliance audit, B: security hardening, C: cross-client + docs)
+      with explicit DoD. Run order A → B (parallel) → C.
+
+      Reference: archidraw `packages/mcp-server/src/tools.ts` is the canonical pattern.
+  - title: Evidence
+    body: |
+      See `/tmp/mcp-agent-research.md` (Phase 1) and
+      `../agent-arch-mcp/idea-mcp-agent-architecture.html` (Phase 2).
+      20+ cited sources covering MCP, OpenAI function calling, structured outputs.
+  - title: Acceptance criteria
+    body: |
+      1. New agent tools exposed as MCP servers (stdio local, Streamable HTTP remote)
+      2. Every `inputSchema` derived from Zod or Pydantic (single source of truth)
+      3. Anthropic `strict: true` + OpenAI Structured Outputs
+      4. Parallel tool calls supported
+      5. State decoupled from transport (`subscribe()` pattern)
+      6. Zod validation at MCP server boundary
+      7. archidraw's 9-tool MCP server is the canonical pattern
+
+      See PRD.md §1 for full list.
+  - title: Non-goals
+    body: |
+      - Big-bang tool migration
+      - OSS-local-model non-strict support
+      - WebSocket duplex bridge
+      - Custom tool-management UI
+  - title: Open questions
+    body: |
+      - Anthropic MCP Apps / UI capability (rumored 2026-Q1)
+      - Streamable HTTP migration (Phase D)
+      - Anthropic writing-tools-for-agents refresh cadence

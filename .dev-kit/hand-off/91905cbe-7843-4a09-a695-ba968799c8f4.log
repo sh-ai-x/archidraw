@@ -16,3 +16,23 @@ Bash	git -C /Users/sanghee/dev/archidraw ls-tree origin/main packages/schema/ 2>
 Bash	for f in package.json packages/schema/package.json packages/schema/src/index.ts 
 Bash	rm -f /Users/sanghee/dev/archidraw/.git/worktrees/step2-resolve/index.lock 2>&1;
 Bash	git -C /Users/sanghee/dev/archidraw fetch origin 2>&1; echo "---resolve #15 (mcp
+Bash	cd /Users/sanghee/dev/archidraw/.worktrees/agent-arch-research mkdir -p docs/pro
+Bash	cat > /Users/sanghee/dev/archidraw/.worktrees/agent-arch-research/docs/proposals
+Bash	cd /Users/sanghee/dev/archidraw/.worktrees/agent-arch-research python3 -m lib.re
+Bash	find /Users/sanghee/.claude/plugins/cache/dev-kit -name "render_proposal_html.py
+Bash	cd /Users/sanghee/dev/archidraw/.worktrees/agent-arch-research DEVKIT=/Users/san
+Bash	cd /Users/sanghee/dev/archidraw/.worktrees/agent-arch-research DEVKIT=/Users/san
+Bash	cd /Users/sanghee/.claude/plugins/cache/dev-kit/dev-kit/0.3.264 # Run from archi
+Bash	WT=/Users/sanghee/dev/archidraw/.worktrees/agent-arch-research mkdir -p $WT/bin/
+Bash	WT=/Users/sanghee/dev/archidraw/.worktrees/agent-arch-research # Reset: put scri
+Bash	WT=/Users/sanghee/dev/archidraw/.worktrees/agent-arch-research rm -rf $WT/lib DE
+Bash	find /Users/sanghee/.claude/plugins/cache/dev-kit -path "*/skills/plan/SKILL.md"
+Bash	DEVKIT=/Users/sanghee/.claude/plugins/cache/dev-kit/dev-kit/0.3.264 ls $DEVKIT/s
+Bash	DEVKIT=/Users/sanghee/.claude/plugins/cache/dev-kit/dev-kit/0.3.264 ls $DEVKIT/b
+Bash	cat /Users/sanghee/.claude/plugins/cache/dev-kit/dev-kit/0.3.264/skills/plan/SKI
+Bash	WT=/Users/sanghee/dev/archidraw/.worktrees/agent-arch-research mkdir -p $WT/phas
+Bash	cd /Users/sanghee/dev/archidraw/.worktrees/agent-arch-research ls PRD.md 2>&1 ec
+Bash	cd /Users/sanghee/dev/archidraw/.worktrees/agent-arch-research rm -f PRD.md ls P
+Bash	cd /Users/sanghee/dev/archidraw/.worktrees/agent-arch-research mkdir -p .dev-kit
+Bash	cd /Users/sanghee/dev/archidraw/.worktrees/agent-arch-research rm ".dev-kit/hand
+Bash	cd /Users/sanghee/dev/archidraw/.worktrees/agent-arch-research PYTHONPATH=. pyth
