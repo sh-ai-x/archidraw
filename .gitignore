@@ -63,3 +63,13 @@ yarn-error.log*
 .cache/
 .pid
 *.pid
+
+# Local dev launchers (manual testing)
+.dev-kit/launchers/
+
+# Local pnpm config tweaks
+.pnpm-approve-builds.yaml
+
+# Local MCP server dev launchers
+packages/mcp-server/dev-*.mjs
+!packages/mcp-server/dist/

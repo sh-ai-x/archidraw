@@ -56,6 +56,12 @@ The layered design is described in [docs/architecture.md](docs/architecture.md).
 |---|---|---|---|
 | ![Draw](e2e/screenshots/01-drawn.png) | ![Query](e2e/screenshots/02-queried.png) | ![Update](e2e/screenshots/03-updated.png) | ![Delete](e2e/screenshots/04-deleted.png) |
 
+### MCP agent architecture (live-drawn via bridge SSE)
+
+![MCP agent architecture](docs/screenshots/archidraw-gui-diagram.png)
+
+The diagram above was created by sending 22 `create_element` tool calls through the running MCP server, then broadcast over the bridge SSE pipeline (MCP → store.subscribe → HttpBridgeTransport → bridge publish → GUI EventSource → store patch → canvas re-render). End-to-end latency ≈ 100ms.
+
 ## Development
 
 ```bash
