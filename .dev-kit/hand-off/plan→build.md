@@ -1,48 +1,54 @@
+---
+status: ok
+date: 2026-08-13
+from: dev-kit:evidence-plan
+to: dev-kit:build
+plan: mcp-agent-arch
+prd: ../../PRD.md
+phase_index: ../../phases/mcp-agent-arch/index.json
+---
+
 # Hand-off: plan -> build
 
-| Field | Value |
-|---|---|
-| From | `/dev-kit:plan` |
-| To | `/dev-kit:build` |
-| Phase | `archidraw-mvp` |
-| Branch base | `plan/archidraw-mvp` |
-| Status | best-effort (ambiguity_score = 5 >= threshold 3; approved by user) |
+## Plan summary
 
-## Artifacts produced
+**Phase**: `mcp-agent-arch`
+**PRD**: `PRD.md` (6 sections, all DoD)
+**Value score**: 4.0/5.0
+**Ambiguity score**: 2.0/10 (cycle 1, no unresolved)
 
-- `PRD.md` -- 6 sections (Frame, Validate, Non-goals, Phase plan, AC, Hand-off)
-- `phases/archidraw-mvp/index.json` -- 7 steps, status pending
-- `phases/archidraw-mvp/step<N>.md` (N=1..7) -- Read first / Task / AC / Verification / Don't
-- `.dev-kit/decision-log.md` -- gates captured
-- `.dev-kit/loop-log.json` -- 4-cycle narrowing
-- `docs/proposals/archidraw/archidraw-mvp.yaml` -- proposal source (auto-emit on Gate 5)
+## Steps (in execution order)
 
-## Steps recap
+1. **step0** — Reference compliance audit (Phase A, 60 min)
+2. **step1** — Security hardening (Phase B, 120 min, parallel to step0)
+3. **step2** — Cross-client verification + docs (Phase C, 90 min, depends on step0+step1)
 
-| N | name | owner | deps |
-|---|---|---|---|
-| 1 | schema | backend-architect | -- |
-| 2 | store | backend-architect | step-1 |
-| 3 | mcp | backend-architect | step-1, step-2 |
-| 4 | gui | frontend-developer | step-1 |
-| 5 | bridge | backend-architect | step-2, step-3, step-4 |
-| 6 | e2e | general-purpose | step-3, step-4, step-5 |
-| 7 | release | backend-architect | step-1..6 |
+## Iron Laws the build must respect
 
-## Build runner contract
+- **L1** — every claim from the research phase carries `url` + `fetched_at` + `source_type` (already enforced in `/tmp/mcp-agent-research.md`).
+- **L4** — no TODO placeholders in the plan artifacts.
+- **tdd-guard** — every step requires a failing test before production code.
 
-- Each step = one worktree (`<worktree_base>-step<N>`) + one build invocation
-- Per step commit protocol: `feat(archidraw-mvp): step N -- <name>` (body-less; N subject is the cross-walk anchor)
-- `chore(archidraw-mvp): step N output` (no-op when nothing new)
-- Runner transitions `index.json` step status `unimplemented -> pending -> in_progress -> completed`
-- Runner refuses without `.dev-kit/ci-config.json` marker (CI was installed 2026-08-10 on PR #1)
+## TDD gates (per step)
 
-## Open decisions absorbed into acceptance
+- `step0` — before: write a fuzz test that calls each tool with 100 invalid inputs. Pass when no panics, all return structured errors.
+- `step1` — before: write fuzz + rate-limit + origin tests. Pass when all 4 mitigations active and verified.
+- `step2` — before: run the cross-client smoke (5 tool calls x 3 clients). Pass when all calls succeed.
 
-- step 2 영속화: `.excalidraw` per-file vs SQLite multi-diagram -> SQLite 만 (단일 truth)
-- step 5 bridge transport: SSE default, WebSocket adapter 는 post-MVP
-- step 4 acceptance 1 차선: 6 툴 + delete 만, undo/redo + erase 는 post-MVP
+## Decision log
 
-## Next step
+- **Chose**: stdio for local, SSE for HTTP+SSE bridge (not Streamable HTTP yet)
+  **Why**: Streamable HTTP is the 2026-07-28 spec; archidraw uses legacy SSE which still works. Migration deferred to a Phase D.
+- **Chose**: Zod for schema source of truth (not hand-written JSON Schema)
+  **Why**: archidraw already uses Zod; drift between LLM-facing schema and runtime validator is the main failure mode.
+- **Chose**: in-memory rate limiter per client (not Redis-backed)
+  **Why**: local-only deployment; no need for cross-process coordination yet.
 
-`/dev-kit:build` (invoked manually by operator). Build runner reads `phases/archidraw-mvp/index.json` + `phases/archidraw-mvp/step<N>.md`; PRD.md is the human-readable companion, not consumed by the runner.
+## Reference implementation
+
+archidraw `packages/mcp-server/src/tools.ts` is the canonical pattern. New agent tools should mirror:
+- Zod-derives-inputSchema (no hand-written JSON Schema)
+- One tool, one job
+- snake_case verb names
+- Plain-language descriptions
+- JSON-serializable return values

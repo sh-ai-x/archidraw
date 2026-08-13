@@ -1,0 +1,71 @@
+{
+  "phase": "mcp-agent-arch",
+  "status": "planned",
+  "version": "0.1.0",
+  "date": "2026-08-13",
+  "prd": "../../PRD.md",
+  "proposal": "../../docs/proposals/agent-arch-mcp/idea-mcp-agent-architecture.html",
+  "research": "/tmp/mcp-agent-research.md",
+  "summary": "MCP-based agent architecture with single-source-of-truth JSON Schema, strict mode, transport-decoupled state, and post-2026-04-15 RCE-advisory security hardening. Archidraw is the reference implementation.",
+  "value_score": 4.0,
+  "ambiguity_score": 2.0,
+  "steps": [
+    {
+      "id": "step0",
+      "title": "Reference compliance audit",
+      "phase": "A",
+      "status": "todo",
+      "estimate_minutes": 60,
+      "depends_on": [],
+      "owner": "dev-kit:build",
+      "files": [
+        "packages/mcp-server/src/tools.ts",
+        "packages/schema/src/zod.ts",
+        "packages/mcp-server/test/"
+      ],
+      "verification": "pnpm --filter @archidraw/mcp-server test + manual code review against Anthropic's writing-tools-for-agents checklist"
+    },
+    {
+      "id": "step1",
+      "title": "Security hardening (input validation, rate limit, origin, audit log)",
+      "phase": "B",
+      "status": "todo",
+      "estimate_minutes": 120,
+      "depends_on": [],
+      "owner": "dev-kit:build",
+      "files": [
+        "packages/mcp-server/src/server.ts",
+        "packages/mcp-server/src/audit.ts",
+        "packages/bridge/src/server.ts",
+        "tests/test_mcp_security.py"
+      ],
+      "verification": "50 fuzzed inputs per tool — all return structured error, no crash. Rate limit test: 100 rapid calls returns 429 after threshold. Origin test: cross-origin request rejected."
+    },
+    {
+      "id": "step2",
+      "title": "Cross-client verification + README docs",
+      "phase": "C",
+      "status": "todo",
+      "estimate_minutes": 90,
+      "depends_on": ["step0", "step1"],
+      "owner": "dev-kit:build",
+      "files": [
+        "README.md",
+        "docs/mcp-integration.md",
+        "CONTRIBUTING.md"
+      ],
+      "verification": "5+ tool calls succeed from `claude mcp add` and `codex mcp add`. README has working copy-paste commands."
+    }
+  ],
+  "non_goals": [
+    "Replace all existing tools in this repo with new MCP servers in one PR",
+    "Add OSS-local-model support that requires non-strict tool definitions",
+    "Replace archidraw's SSE bridge with full WebSocket duplex",
+    "Build a UI to view/manage the agent's tool surface"
+  ],
+  "open_questions": [
+    "Will Anthropic ship a 'MCP Apps' / UI capability? (rumored 2026-Q1)",
+    "Should we adopt the new 2026-07-28 Streamable HTTP transport now, or wait?",
+    "Anthropic's writing-tools-for-agents post is 2025-09-11. Re-check at next major release."
+  ]
+}
