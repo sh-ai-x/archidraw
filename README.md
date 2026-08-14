@@ -20,7 +20,7 @@ Open <http://localhost:5173>.
 
 ## Install as an MCP plugin (Claude Code)
 
-The repo itself is a Claude Code plugin. The manifest at `.claude-plugin/plugin.json` declares the `archidraw` MCP server, and `bin/archidraw-mcp` is the stdio entrypoint shared with Codex.
+The repo itself is a Claude Code plugin. The manifest at `.claude-plugin/plugin.json` declares the `archidraw` MCP server, `.claude-plugin/mcp.json` ships the server wiring (with `${CLAUDE_PLUGIN_ROOT}` paths substituted by Claude Code at launch), and `bin/archidraw-mcp` is the stdio entrypoint shared with Codex.
 
 ```bash
 # from a clone of this repo
@@ -36,16 +36,20 @@ claude plugin install /tmp/archidraw-0.2.0.tgz
 
 Claude Code runs the shim, which on first call installs dependencies (`pnpm install --prod --frozen-lockfile`) and builds the MCP server (`pnpm --filter @archidraw/mcp-server build`). Subsequent calls hit the cached `dist/`.
 
-## Install as an MCP server (Codex)
+## Install as an MCP plugin (Codex)
 
-Codex has no plugin manifest format, but it loads MCP servers from `~/.codex/config.toml`. Add this stanza:
+The repo carries a parallel manifest at `.codex-plugin/plugin.json` pointing at `.codex-plugin/mcp.json`. The wire format mirrors Claude Code, but the command/args paths differ (see the caveat below).
 
-```toml
-[mcp_servers.archidraw]
-command = "/absolute/path/to/archidraw/bin/archidraw-mcp"
+```bash
+# Option A — install via marketplace snapshot (if published)
+codex plugin marketplace add sh-ai-x/archidraw
+codex plugin install archidraw@sh-ai-x-archidraw
+
+# Option B — manual registration from a clone
+codex mcp add archidraw "$(pwd)/bin/archidraw-mcp"
 ```
 
-The shim resolves the install root from its own location, so the absolute path is the only thing Codex needs. Without `CLAUDE_PLUGIN_DATA` set, the SQLite DB lands at `<archidraw>/.data/archidraw.db`.
+**Caveat (Codex-specific):** Codex CLI does not yet substitute `${CLAUDE_PLUGIN_ROOT}` or `${CLAUDE_PLUGIN_DATA}` in `.mcp.json` `command`/`args` fields (open bug: openai/codex#19582 — *"`Codex CLI should interpolate `${CLAUDE_PLUGIN_ROOT}` in `.mcp.json` `args[]` and `command`"*). Until that bug lands, the relative `command: "bin/archidraw-mcp"` path inside `.codex-plugin/mcp.json` only resolves when Codex launches the process with cwd = plugin cache root; otherwise use Option B (`codex mcp add` with the absolute path). The shim's `bin/..` fallback works either way — DB lands at `<install-root>/.data/archidraw.db`.
 
 ## Manual MCP registration (fallback)
 

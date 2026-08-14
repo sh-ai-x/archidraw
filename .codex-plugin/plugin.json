@@ -1,9 +1,8 @@
 {
-  "$schema": "https://json.schemastore.org/claude-code-plugin",
   "name": "archidraw",
   "displayName": "archidraw",
   "version": "0.2.0",
-  "description": "Local-first whiteboard with MCP tools for scene CRUD. Edit scenes through Claude Code or Codex; render live via the bundled GUI.",
+  "description": "Local-first whiteboard with MCP tools for scene CRUD. Same shim as the Claude Code plugin; stdio transport works on both runtimes.",
   "author": {
     "name": "sh-ai-x"
   },

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "archidraw": {
+      "command": "bin/archidraw-mcp",
+      "args": [
+        "--db",
+        "./.data/archidraw.db"
+      ],
+      "env": {}
+    }
+  }
+}
