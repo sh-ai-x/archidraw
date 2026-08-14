@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin",
+  "name": "archidraw",
+  "displayName": "archidraw",
+  "version": "0.2.0",
+  "description": "Local-first whiteboard with MCP tools for scene CRUD. Edit scenes through Claude Code or Codex; render live via the bundled GUI.",
+  "author": {
+    "name": "sh-ai-x"
+  },
+  "homepage": "https://github.com/sh-ai-x/archidraw",
+  "repository": "https://github.com/sh-ai-x/archidraw",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "whiteboard",
+    "diagram",
+    "scene",
+    "excalidraw"
+  ],
+  "mcpServers": "./mcp.json"
+}

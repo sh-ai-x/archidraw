@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "archidraw": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/archidraw-mcp",
+      "args": [
+        "--db",
+        "${CLAUDE_PLUGIN_DATA}/archidraw.db"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "archidraw",
+  "displayName": "archidraw",
+  "version": "0.2.0",
+  "description": "Local-first whiteboard with MCP tools for scene CRUD. Same shim as the Claude Code plugin; stdio transport works on both runtimes.",
+  "author": {
+    "name": "sh-ai-x"
+  },
+  "homepage": "https://github.com/sh-ai-x/archidraw",
+  "repository": "https://github.com/sh-ai-x/archidraw",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "whiteboard",
+    "diagram",
+    "scene",
+    "excalidraw"
+  ],
+  "mcpServers": "./mcp.json"
+}
