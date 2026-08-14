@@ -18,9 +18,38 @@ pnpm dev:bridge
 
 Open <http://localhost:5173>.
 
-## MCP registration
+## Install as an MCP plugin (Claude Code)
 
-Add this object to Claude Code's `~/.claude.json` (replace `<clone>` with the absolute clone path):
+The repo itself is a Claude Code plugin. The manifest at `.claude-plugin/plugin.json` declares the `archidraw` MCP server, and `bin/archidraw-mcp` is the stdio entrypoint shared with Codex.
+
+```bash
+# from a clone of this repo
+git clone https://github.com/sh-ai-x/archidraw.git
+cd archidraw
+
+# Build the install tarball (excludes node_modules; the shim installs deps on first run)
+git archive -o /tmp/archidraw-0.2.0.tgz HEAD
+# or:  pnpm pack --pack-destination /tmp
+
+claude plugin install /tmp/archidraw-0.2.0.tgz
+```
+
+Claude Code runs the shim, which on first call installs dependencies (`pnpm install --prod --frozen-lockfile`) and builds the MCP server (`pnpm --filter @archidraw/mcp-server build`). Subsequent calls hit the cached `dist/`.
+
+## Install as an MCP server (Codex)
+
+Codex has no plugin manifest format, but it loads MCP servers from `~/.codex/config.toml`. Add this stanza:
+
+```toml
+[mcp_servers.archidraw]
+command = "/absolute/path/to/archidraw/bin/archidraw-mcp"
+```
+
+The shim resolves the install root from its own location, so the absolute path is the only thing Codex needs. Without `CLAUDE_PLUGIN_DATA` set, the SQLite DB lands at `<archidraw>/.data/archidraw.db`.
+
+## Manual MCP registration (fallback)
+
+If you'd rather not use the plugin or Codex config path, add this object to Claude Code's `~/.claude.json` (replace `<clone>` with the absolute clone path):
 
 ```json
 {

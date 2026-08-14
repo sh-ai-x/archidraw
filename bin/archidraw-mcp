@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# archidraw-mcp -- stdio entrypoint for the archidraw MCP server.
+#
+# Resolves the plugin install root (the directory that contains this bin/),
+# ensures dependencies and the MCP server build are present, then exec's the
+# bundled MCP server launcher with stdio passthrough.
+#
+# Works under both:
+#   - Claude Code plugin context: ${CLAUDE_PLUGIN_ROOT} is set; the MCP server
+#     config in .mcp.json calls this script directly.
+#   - Codex CLI: the user adds this script path to ~/.codex/config.toml under
+#     [mcp_servers.archidraw]. Same binary, same args.
+#
+# Environment:
+#   CLAUDE_PLUGIN_ROOT   Plugin install root (Claude Code)
+#   CLAUDE_PLUGIN_DATA   Per-install writable dir for SQLite DB (Claude Code)
+
+set -euo pipefail
+
+# Resolve plugin install root. Prefer CLAUDE_PLUGIN_ROOT (Claude Code sets it
+# for the plugin session). Fall back to the parent of bin/ (works for local
+# checkouts and Codex usage from a clone).
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  DIR="$CLAUDE_PLUGIN_ROOT"
+else
+  DIR="$(cd "$(dirname "$0")/.." && pwd)"
+fi
+
+# Idempotent dependency install. `pnpm install --prod --frozen-lockfile` is
+# a no-op when node_modules already exists and is cheap enough to leave in
+# place for users who clone fresh.
+if [ ! -d "$DIR/node_modules" ]; then
+  echo "archidraw-mcp: installing dependencies (one-time)..." >&2
+  (cd "$DIR" && pnpm install --prod --frozen-lockfile) >&2
+fi
+
+# Idempotent build. pnpm tsc output goes under each workspace's dist/; if
+# missing, build the schema + store + mcp-server chain (in dependency order).
+# `schema` is a leaf, `store` depends on schema, `mcp-server` depends on both.
+if [ ! -f "$DIR/packages/mcp-server/dist/index.js" ]; then
+  echo "archidraw-mcp: building MCP server (one-time)..." >&2
+  (cd "$DIR" && pnpm --filter @archidraw/schema --filter @archidraw/store --filter @archidraw/mcp-server build) >&2
+fi
+
+# Resolve DB directory: per-install writable dir under Claude Code;
+# plugin-root fallback for portable checkouts and Codex usage.
+if [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
+  DB_DIR="$CLAUDE_PLUGIN_DATA"
+else
+  DB_DIR="$DIR/.data"
+fi
+mkdir -p "$DB_DIR"
+DB_PATH="$DB_DIR/archidraw.db"
+
+exec node "$DIR/packages/mcp-server/dist/index.js" --db "$DB_PATH" "$@"
