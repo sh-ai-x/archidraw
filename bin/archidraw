@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# archidraw — single-command dev launcher.
+# Starts the SSE bridge (:5174) and the Vite GUI (:5173), then opens the browser.
+# Pass --port N to override either, --no-open to skip browser, --no-bridge for GUI-only.
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BRIDGE_PORT=5174
+GUI_PORT=5173
+OPEN_BROWSER=1
+RUN_BRIDGE=1
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --port) GUI_PORT="$2"; BRIDGE_PORT=$((GUI_PORT+1)); shift 2 ;;
+    --gui-port) GUI_PORT="$2"; shift 2 ;;
+    --bridge-port) BRIDGE_PORT="$2"; shift 2 ;;
+    --no-open) OPEN_BROWSER=0; shift ;;
+    --no-bridge) RUN_BRIDGE=0; shift ;;
+    -h|--help)
+      sed -n '2,10p' "$0"; exit 0 ;;
+    *) echo "unknown arg: $1" >&2; exit 2 ;;
+  esac
+done
+
+cleanup() {
+  local pid
+  for pid in "${PIDS[@]:-}"; do
+    [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
+  done
+  wait 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+# 1. install deps if needed
+if [[ ! -d "$ROOT/node_modules" ]]; then
+  echo "→ installing dependencies (pnpm install)…"
+  (cd "$ROOT" && pnpm install)
+fi
+
+# 2. build bridge dist if needed (bridge.cjs is prebuilt; nothing to do here)
+
+PIDS=()
+
+# 3. start the bridge (publish/sse) on $BRIDGE_PORT
+if [[ $RUN_BRIDGE -eq 1 ]]; then
+  echo "→ bridge: http://127.0.0.1:$BRIDGE_PORT  (publish + /events)"
+  (cd "$ROOT" && node .dev-kit/launchers/dev-bridge.cjs) > /tmp/archidraw-bridge.log 2>&1 &
+  PIDS+=("$!")
+  # wait for port
+  for _ in {1..20}; do
+    lsof -nP -iTCP:"$BRIDGE_PORT" -sTCP:LISTEN >/dev/null 2>&1 && break
+    sleep 0.2
+  done
+fi
+
+# 4. start vite (GUI) on $GUI_PORT bound to all interfaces
+echo "→ gui:    http://localhost:$GUI_PORT/"
+(cd "$ROOT/packages/gui" && pnpm dev --port "$GUI_PORT" --strictPort --host 0.0.0.0) > /tmp/archidraw-gui.log 2>&1 &
+PIDS+=("$!")
+for _ in {1..40}; do
+  lsof -nP -iTCP:"$GUI_PORT" -sTCP:LISTEN >/dev/null 2>&1 && break
+  sleep 0.2
+done
+
+# 5. open the browser
+if [[ $OPEN_BROWSER -eq 1 ]]; then
+  URL="http://localhost:$GUI_PORT/"
+  if command -v open >/dev/null 2>&1; then open "$URL"
+  elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$URL"
+  fi
+fi
+
+echo "→ ready. Ctrl-C to stop."
+echo "  gui:     http://localhost:$GUI_PORT/"
+echo "  bridge:  http://127.0.0.1:$BRIDGE_PORT/publish  (POST scene deltas)"
+echo "  logs:    /tmp/archidraw-bridge.log  /tmp/archidraw-gui.log"
+wait

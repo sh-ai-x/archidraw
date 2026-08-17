@@ -1,15 +1,33 @@
-import {useEffect,useMemo,useState} from "react";
+import {useEffect,useMemo,useRef,useState} from "react";
 import {Canvas} from "./Canvas";
 import {Toolbar} from "./Toolbar";
 import {HelpModal} from "./HelpModal";
 import {createMemoryStore,type Tool} from "./scene";
 import {subscribeToSceneDeltas} from "./bridge-client";
-import type {Element} from "@archidraw/schema";
+import {SceneTabs} from "./SceneTabs";
+import {SceneIO} from "./SceneIO";
+import {LayoutPanel} from "./LayoutPanel";
+import {SnapshotPanel} from "./SnapshotPanel";
+import type {Element, ExcalidrawScene} from "@archidraw/schema";
 import "./styles.css";
 
 export function App(){
-  const [,refresh]=useState(0);
-  const store=useMemo(()=>createMemoryStore(undefined,()=>refresh(v=>v+1)),[]);
+  const [sceneVersion,setSceneVersion]=useState(0);
+  const store=useMemo(()=>createMemoryStore(undefined,()=>setSceneVersion(v=>v+1)),[]);
+  // Run the layout auto-fix once on mount (mutates store directly, no publish → no loop)
+  const seededRef=useRef(false);
+  useEffect(()=>{
+    if(seededRef.current)return;
+    seededRef.current=true;
+    const els=store.getScene().elements;
+    if(!els.length)return;
+    void import("./LayoutPanel").then(({silentAutoFix})=>{
+      const fixed=silentAutoFix(els);
+      if(fixed===els)return;
+      for(const e of store.queryElements({includeDeleted:true}))store.deleteElement(e.id);
+      for(const v of fixed)store.createElement(v);
+    });
+  },[store]);
   const [tool,setTool]=useState<Tool>("select");
   const [showHelp,setShowHelp]=useState(false);
 
@@ -26,14 +44,9 @@ export function App(){
   },[]);
 
   // Bridge subscription: apply scene-delta events to the local store.
-  // Connects to http://127.0.0.1:5174/events (SSE) and applies
-  // JsonPatch operations (add / replace / remove) to the in-memory
-  // scene store. Auto-reconnects on error.
   useEffect(()=>{
     const unsub=subscribeToSceneDeltas((delta:unknown)=>{
       try{
-        // Bridge sends either an array of patches directly, or
-        // an object with a `patches` field. Normalize.
         type Patch={op:string;path:string;value?:unknown};
         const patches:Patch[]=Array.isArray(delta)
           ?(delta as Patch[])
@@ -60,13 +73,64 @@ export function App(){
     return()=>unsub();
   },[store]);
 
+  // Called by SceneTabs when the active tab changes: rewrite store to match.
+  const handleTabActiveChange = (active: { tabs: Array<{id:string;name:string;scene:{elements:Element[]}}>; activeTabId: string | null }) => {
+    const activeTab = active.tabs.find(t => t.id === active.activeTabId);
+    if (!activeTab) return;
+    const next = activeTab.scene.elements.filter(e => !e.isDeleted);
+    const current = store.queryElements({includeDeleted:true});
+    // Skip if already in sync (cheap id+position+size compare).
+    if (current.length === next.length) {
+      let same = true;
+      for (let i = 0; i < current.length; i++) {
+        const a = current[i], b = next[i];
+        if (a.id !== b.id || a.x !== b.x || a.y !== b.y || a.width !== b.width || a.height !== b.height) {
+          same = false; break;
+        }
+      }
+      if (same) return;
+    }
+    for (const el of store.queryElements({includeDeleted:true})) store.deleteElement(el.id);
+    for (const el of next) store.createElement(structuredClone(el));
+  };
+
+  // Called by SceneIO when loading a file as a new tab.
+  const handleLoadAsTab = (name: string, elements: Element[]) => {
+    const id = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2));
+    // First, swap store to loaded elements.
+    for (const el of store.queryElements({includeDeleted:true})) store.deleteElement(el.id);
+    for (const el of elements) {
+      if (el && !el.isDeleted) store.createElement(structuredClone(el));
+    }
+    // Then append a new tab record + set as active.
+    try {
+      const raw = localStorage.getItem("archidraw:tabs");
+      const tabs = raw ? JSON.parse(raw) as Array<{id:string;name:string;scene:ExcalidrawScene}> : [];
+      const tab = { id, name, scene: { type: "excalidraw" as const, version: 2, source: "archidraw", elements: store.getScene().elements, appState: {}, files: {} } };
+      tabs.push(tab);
+      localStorage.setItem("archidraw:tabs", JSON.stringify(tabs));
+      localStorage.setItem("archidraw:activeTab", id);
+    } catch {
+      // best effort
+    }
+  };
+
   return <main className="app">
     <Toolbar active={tool} onChange={setTool}/>
-    <section className="canvas-shell">
-      <Canvas store={store} tool={tool} setTool={setTool}/>
-      <div className="zoom-label">{Math.round(100)}%</div>
-    </section>
-    <button className="help-fab" onClick={()=>setShowHelp(true)} title="Keyboard shortcuts (?)" aria-label="Help">?</button>
+    <div className="canvas-area">
+      <SceneTabs
+        store={store}
+        sceneVersion={sceneVersion}
+        onActiveChange={handleTabActiveChange}
+        rightSlot={<><SceneIO store={store} onLoadAsTab={handleLoadAsTab}/><LayoutPanel store={store}/><SnapshotPanel/></>}
+      />
+      <section className="canvas-shell">
+        <Canvas store={store} tool={tool} setTool={setTool}/>
+        <div className="zoom-label">{Math.round(100)}%</div>
+      </section>
+    </div>
     {showHelp&&<HelpModal onClose={()=>setShowHelp(false)}/>}
   </main>;
 }
