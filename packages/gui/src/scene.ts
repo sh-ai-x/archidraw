@@ -1,7 +1,7 @@
 import type {Element, ExcalidrawScene, Point} from "@archidraw/schema";
 export type Tool="hand"|"select"|"rectangle"|"ellipse"|"diamond"|"arrow"|"line"|"text"|"erase";
 export type ElementPatch=Partial<Element> & Record<string, unknown>;
-export interface SceneStore {getScene():ExcalidrawScene; queryElements():Element[]; updateElement(id:string, updates:ElementPatch):void; deleteElement(id:string):void; createElement(element:Element):void; undo():boolean; redo():boolean; canUndo():boolean; canRedo():boolean}
+export interface SceneStore {getScene():ExcalidrawScene; queryElements(opts?:{includeDeleted?:boolean}):Element[]; updateElement(id:string, updates:ElementPatch):void; deleteElement(id:string):void; createElement(element:Element):void; undo():boolean; redo():boolean; canUndo():boolean; canRedo():boolean}
 const KEY="archidraw:scene";
 export const emptyScene=():ExcalidrawScene=>({type:"excalidraw",version:2,source:"archidraw",elements:[],appState:{},files:{}});
 export const loadScene=():ExcalidrawScene=>{try{const raw=localStorage.getItem(KEY);if(raw){const parsed=JSON.parse(raw);if(parsed?.type==="excalidraw"&&Array.isArray(parsed.elements))return parsed}}catch{}return emptyScene()};
@@ -20,7 +20,7 @@ export const createMemoryStore=(initial=loadScene(), onChange:()=>void=()=>{}):S
   const restore=(target:ExcalidrawScene)=>{scene=structuredClone(target);persist()};
   return {
     getScene:()=>scene,
-    queryElements:()=>scene.elements.filter(e=>!e.isDeleted),
+    queryElements:(opts?:{includeDeleted?:boolean})=>opts&&opts.includeDeleted?scene.elements:scene.elements.filter(e=>!e.isDeleted),
     updateElement:(id,updates)=>{snapshot();const i=scene.elements.findIndex(e=>e.id===id);if(i>=0)scene.elements[i]={...scene.elements[i],...updates,id:scene.elements[i].id} as Element;persist()},
     deleteElement:id=>{snapshot();scene.elements=scene.elements.filter(e=>e.id!==id);persist()},
     createElement:element=>{snapshot();scene.elements=[...scene.elements,element];persist()},
