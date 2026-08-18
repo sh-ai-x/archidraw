@@ -90,7 +90,7 @@ jobs:
       issues: write
       id-token: write
     env:
-      MINIMAX_BASE_URL: https://api.minimax.io/anthropic
+      MINIMAX_BASE_URL: https://api.MiniMax.chat/anthropic
       # Used by the consumer-install branch of the install step below when
       # the dev-harness-kit source is private. Optional for self-install.
       DEV_KIT_GITHUB_TOKEN: ${{ secrets.DEV_KIT_GITHUB_TOKEN }}
@@ -165,10 +165,10 @@ jobs:
           ANTHROPIC_BASE_URL: ${{ env.MINIMAX_BASE_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.MINIMAX_API_KEY }}
-          ANTHROPIC_MODEL: 'MiniMax-M3[1m]'
-          ANTHROPIC_DEFAULT_SONNET_MODEL: 'MiniMax-M3[1m]'
-          ANTHROPIC_DEFAULT_OPUS_MODEL: 'MiniMax-M3[1m]'
-          ANTHROPIC_DEFAULT_HAIKU_MODEL: 'MiniMax-M3[1m]'
+          ANTHROPIC_MODEL: 'MiniMax-Text-01'
+          ANTHROPIC_DEFAULT_SONNET_MODEL: 'MiniMax-Text-01'
+          ANTHROPIC_DEFAULT_OPUS_MODEL: 'MiniMax-Text-01'
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: 'MiniMax-Text-01'
         uses: anthropics/claude-code-action@v1
         with:
           track_progress: false  # force per-line inline comments (track_progress: true suppresses them)
@@ -400,7 +400,7 @@ jobs:
       issues: write
       id-token: write
     env:
-      MINIMAX_BASE_URL: https://api.minimax.io/anthropic
+      MINIMAX_BASE_URL: https://api.MiniMax.chat/anthropic
       DEV_KIT_GITHUB_TOKEN: ${{ secrets.DEV_KIT_GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -472,10 +472,10 @@ jobs:
           ANTHROPIC_BASE_URL: ${{ env.MINIMAX_BASE_URL }}
           ANTHROPIC_API_KEY: ${{ secrets.MINIMAX_API_KEY }}
           ANTHROPIC_AUTH_TOKEN: ${{ secrets.MINIMAX_API_KEY }}
-          ANTHROPIC_MODEL: 'MiniMax-M3[1m]'
-          ANTHROPIC_DEFAULT_SONNET_MODEL: 'MiniMax-M3[1m]'
-          ANTHROPIC_DEFAULT_OPUS_MODEL: 'MiniMax-M3[1m]'
-          ANTHROPIC_DEFAULT_HAIKU_MODEL: 'MiniMax-M3[1m]'
+          ANTHROPIC_MODEL: 'MiniMax-Text-01'
+          ANTHROPIC_DEFAULT_SONNET_MODEL: 'MiniMax-Text-01'
+          ANTHROPIC_DEFAULT_OPUS_MODEL: 'MiniMax-Text-01'
+          ANTHROPIC_DEFAULT_HAIKU_MODEL: 'MiniMax-Text-01'
         uses: anthropics/claude-code-action@v1
         with:
           track_progress: false  # force per-line inline comments (track_progress: true suppresses them)
