@@ -142,15 +142,37 @@ jobs:
         id: provider
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REVIEW_PROVIDER_INPUT: ${{ github.event.inputs.review_provider }}
+          PR_NUMBER_INPUT: ${{ github.event.inputs.pr_number }}
+          PR_NUMBER_AUTO: ${{ github.event.pull_request.number }}
         run: |
+          # A01 review: pr_number is shell-interpolated into gh api URLs.
+          # Read inputs via env, not direct ${{ }} interpolation, to prevent
+          # workflow-injection. Reject anything that is not a positive integer.
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            provider="${{ github.event.inputs.review_provider }}"
-            [ -z "${{ github.event.inputs.pr_number }}" ] && { echo "::error::pr_number required"; exit 1; }
-            echo "pr_number=${{ github.event.inputs.pr_number }}" >> "$GITHUB_OUTPUT"
+            provider="$REVIEW_PROVIDER_INPUT"
+            PR_NUMBER_RAW="$PR_NUMBER_INPUT"
           else
             provider="${{ vars.CI_REVIEW_PROVIDER }}"
-            echo "pr_number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            PR_NUMBER_RAW="$PR_NUMBER_AUTO"
           fi
+          if [ -z "$provider" ]; then
+            echo "::error::No provider resolved. Set the GitHub repo variable:"
+            echo "  gh variable set CI_REVIEW_PROVIDER --body anthropic"
+            echo "or pass review_provider on a manual workflow_dispatch run."
+            exit 1
+          fi
+          if ! printf '%s' "$PR_NUMBER_RAW" | grep -Eq '^[0-9]+$'; then
+            echo "::error::pr_number must be a positive integer, got: $PR_NUMBER_RAW"
+            exit 1
+          fi
+          if [ -z "$PR_NUMBER_RAW" ] || [ "$PR_NUMBER_RAW" = "0" ]; then
+            echo "::error::pr_number required (got: '$PR_NUMBER_RAW')"
+            exit 1
+          fi
+          PR_NUMBER="$PR_NUMBER_RAW"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "provider=$provider" >> "$GITHUB_OUTPUT"
           if [ -z "$provider" ]; then
             echo "::error::No provider resolved. Set the GitHub repo variable:"
             echo "  gh variable set CI_REVIEW_PROVIDER --body anthropic"
@@ -177,7 +199,7 @@ jobs:
             Load the /dev-kit:review skill from $HOME/.claude/plugins/marketplaces/dev-kit/skills/review/SKILL.md
             (use the Read tool). Follow its protocol. After analysis, post the
             Layer-2 summary as a single PR comment via:
-              gh pr comment "${{ steps.provider.outputs.pr_number }}" --body "..."
+              gh pr comment "$PR_NUMBER" --body "..."
 
             The body MUST begin with a single line of exactly one of:
               Verdict: Approve
@@ -215,7 +237,7 @@ jobs:
             Load the /dev-kit:review skill from $HOME/.claude/plugins/marketplaces/dev-kit/skills/review/SKILL.md
             (use the Read tool). Follow its protocol. After analysis, post the
             Layer-2 summary as a single PR comment via:
-              gh pr comment "${{ steps.provider.outputs.pr_number }}" --body "..."
+              gh pr comment "$PR_NUMBER" --body "..."
 
             The body MUST begin with a single line of exactly one of:
               Verdict: Approve
@@ -489,15 +511,37 @@ jobs:
         id: provider
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REVIEW_PROVIDER_INPUT: ${{ github.event.inputs.review_provider }}
+          PR_NUMBER_INPUT: ${{ github.event.inputs.pr_number }}
+          PR_NUMBER_AUTO: ${{ github.event.pull_request.number }}
         run: |
+          # A01 review: pr_number is shell-interpolated into gh api URLs.
+          # Read inputs via env, not direct ${{ }} interpolation, to prevent
+          # workflow-injection. Reject anything that is not a positive integer.
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            provider="${{ github.event.inputs.review_provider }}"
-            [ -z "${{ github.event.inputs.pr_number }}" ] && { echo "::error::pr_number required"; exit 1; }
-            echo "pr_number=${{ github.event.inputs.pr_number }}" >> "$GITHUB_OUTPUT"
+            provider="$REVIEW_PROVIDER_INPUT"
+            PR_NUMBER_RAW="$PR_NUMBER_INPUT"
           else
             provider="${{ vars.CI_REVIEW_PROVIDER }}"
-            echo "pr_number=${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            PR_NUMBER_RAW="$PR_NUMBER_AUTO"
           fi
+          if [ -z "$provider" ]; then
+            echo "::error::No provider resolved. Set the GitHub repo variable:"
+            echo "  gh variable set CI_REVIEW_PROVIDER --body anthropic"
+            echo "or pass review_provider on a manual workflow_dispatch run."
+            exit 1
+          fi
+          if ! printf '%s' "$PR_NUMBER_RAW" | grep -Eq '^[0-9]+$'; then
+            echo "::error::pr_number must be a positive integer, got: $PR_NUMBER_RAW"
+            exit 1
+          fi
+          if [ -z "$PR_NUMBER_RAW" ] || [ "$PR_NUMBER_RAW" = "0" ]; then
+            echo "::error::pr_number required (got: '$PR_NUMBER_RAW')"
+            exit 1
+          fi
+          PR_NUMBER="$PR_NUMBER_RAW"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "provider=$provider" >> "$GITHUB_OUTPUT"
           if [ -z "$provider" ]; then
             echo "::error::No provider resolved. Set the GitHub repo variable:"
             echo "  gh variable set CI_REVIEW_PROVIDER --body anthropic"
@@ -523,7 +567,7 @@ jobs:
             Load the /dev-kit:security skill from $HOME/.claude/plugins/marketplaces/dev-kit/skills/security/SKILL.md
             (use the Read tool). Follow its protocol. After analysis, post the
             security summary as a single PR comment via:
-              gh pr comment "${{ steps.provider.outputs.pr_number }}" --body "..."
+              gh pr comment "$PR_NUMBER" --body "..."
 
             The body MUST begin with a single line of exactly one of:
               Verdict: Approve
@@ -560,7 +604,7 @@ jobs:
             Load the /dev-kit:security skill from $HOME/.claude/plugins/marketplaces/dev-kit/skills/security/SKILL.md
             (use the Read tool). Follow its protocol. After analysis, post the
             security summary as a single PR comment via:
-              gh pr comment "${{ steps.provider.outputs.pr_number }}" --body "..."
+              gh pr comment "$PR_NUMBER" --body "..."
 
             The body MUST begin with a single line of exactly one of:
               Verdict: Approve

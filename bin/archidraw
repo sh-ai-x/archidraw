@@ -18,6 +18,7 @@ while [[ $# -gt 0 ]]; do
     --bridge-port) BRIDGE_PORT="$2"; shift 2 ;;
     --no-open) OPEN_BROWSER=0; shift ;;
     --no-bridge) RUN_BRIDGE=0; shift ;;
+    --lan) LAN=1; shift ;;
     -h|--help)
       sed -n '2,10p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
@@ -28,6 +29,11 @@ cleanup() {
   local pid
   for pid in "${PIDS[@]:-}"; do
     [[ -n "$pid" ]] && kill "$pid" 2>/dev/null || true
+  done
+  # 2-second grace, then SIGKILL anything that did not exit
+  sleep 2
+  for pid in "${PIDS[@]:-}"; do
+    [[ -n "$pid" ]] && kill -KILL "$pid" 2>/dev/null || true
   done
   wait 2>/dev/null || true
 }
@@ -57,7 +63,9 @@ fi
 
 # 4. start vite (GUI) on $GUI_PORT bound to all interfaces
 echo "→ gui:    http://localhost:$GUI_PORT/"
-(cd "$ROOT/packages/gui" && pnpm dev --port "$GUI_PORT" --strictPort --host 0.0.0.0) > /tmp/archidraw-gui.log 2>&1 &
+GUI_HOST=127.0.0.1
+[[ "$OPEN_BROWSER" == "1" || "$LAN" == "1" ]] && GUI_HOST=0.0.0.0
+(cd "$ROOT/packages/gui" && pnpm dev --port "$GUI_PORT" --strictPort --host "$GUI_HOST") > /tmp/archidraw-gui.log 2>&1 &
 PIDS+=("$!")
 for _ in {1..40}; do
   lsof -nP -iTCP:"$GUI_PORT" -sTCP:LISTEN >/dev/null 2>&1 && break

@@ -21,8 +21,11 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
   const DRAGGING_THRESHOLD=3;
   const elements=store.queryElements();
   const bbox=boundingBoxFromElements(elements);
-  const cssW=Math.max(bbox.w,800);
-  const cssH=Math.max(bbox.h,600);
+  // A06 review: cap canvas size to prevent unbounded allocation if bbox is huge
+  // (e.g. tampered localStorage with attacker-controllable coordinates).
+  const MAX_DIM = 16384;
+  const cssW=Math.min(Math.max(bbox.w,800), MAX_DIM);
+  const cssH=Math.min(Math.max(bbox.h,600), MAX_DIM);
 
   // 1. render whenever scene/zoom/pan/selection changes
   useEffect(()=>{

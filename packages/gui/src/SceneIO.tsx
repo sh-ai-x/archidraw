@@ -39,6 +39,15 @@ export function SceneIO({
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
+      // 25 MB hard cap — a 1 GB file or one that parses to millions of
+      // nested elements can OOM the tab. Per A08 review on PR #48.
+      const MAX_BYTES = 25 * 1024 * 1024;
+      if (file.size > MAX_BYTES) {
+        // 25 MB cap (A08 review on PR #48). Alert is the only transient
+        // error sink — handleLoad is fire-and-forget outside React state.
+        window.alert(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB > 25 MB)`);
+        return;
+      }
       const text = await file.text();
       try {
         const parsed = JSON.parse(text);
