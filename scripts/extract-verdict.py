@@ -232,6 +232,118 @@ def extract_from_comments(path: Path) -> str:
     return last_verdict
 
 
+def _auto_fetch_pr_comments_verdict() -> str:
+    """Issue #625 auto-fetch: when no comments file is provided on the
+    command line, fetch the PR's comments via the `gh` CLI and scan
+    them for the LAST `Verdict: <value>` line, filtered by author
+    (`claude*`) and cutoff timestamp (defeats the #244 stale-comment
+    flap — without the cutoff, a previous run's verdict would win and
+    the gate would flip-flop on every push).
+
+    Requires the `gh` CLI in PATH plus `GITHUB_TOKEN` (or `GH_TOKEN`)
+    and `PR_NUMBER` env vars set. Returns "" on any failure (CLI
+    missing, non-zero exit, network error, no matching comment) so
+    the caller's no-file / PARSE_FAILED tolerance still works.
+
+    This is the fix for PR #48 / PR #49 where the AI agents run on
+    the PR but the action's output envelope format change means
+    extract-verdict.py cannot parse the verdict from the file. The
+    AI does post the verdict as a PR comment, but the review.yml
+    gate in origin/main does not pass a comments file. Without this
+    fallback the gate hard-fails with PARSE_FAILED; with this
+    fallback the comment verdict is recovered.
+    """
+    import os
+    import subprocess
+    import tempfile
+
+    pr_number = os.environ.get("PR_NUMBER") or os.environ.get("GITHUB_PR_NUMBER")
+    if not pr_number:
+        return ""
+    cutoff = (
+        os.environ.get("VERDICT_COMMENT_CUTOFF")
+        or os.environ.get("GITHUB_HEAD_COMMIT_TIMESTAMP")
+        or ""
+    )
+    # gh api needs the repo coordinates. Pull owner/repo from `gh repo
+    # view --json nameWithOwner` so this works in any clone, not just
+    # the canonical archidraw repo.
+    try:
+        repo_proc = subprocess.run(
+            ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if repo_proc.returncode != 0 or not repo_proc.stdout.strip():
+            return ""
+        repo = repo_proc.stdout.strip()
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError, OSError):
+        return ""
+    # Fetch all comments for the PR. Use --paginate so multi-page
+    # results are concatenated.
+    try:
+        comments_proc = subprocess.run(
+            [
+                "gh", "api",
+                f"/repos/{repo}/issues/{pr_number}/comments",
+                "--paginate",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if comments_proc.returncode != 0:
+            return ""
+        raw = comments_proc.stdout.strip()
+    except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError, OSError):
+        return ""
+    if not raw:
+        return ""
+    # gh api with --paginate on a list endpoint emits JSONL (one
+    # object per line). Accept either JSONL or a JSON array.
+    try:
+        if raw.startswith("["):
+            comments_all = json.loads(raw)
+        else:
+            comments_all = [json.loads(line) for line in raw.splitlines() if line.strip()]
+    except json.JSONDecodeError:
+        return ""
+    # Filter by author (claude[bot] / claude-*) and cutoff. Build the
+    # shape extract_from_comments expects: array of {body, createdAt}.
+    filtered: list[dict] = []
+    for c in comments_all:
+        if not isinstance(c, dict):
+            continue
+        author = c.get("user", {}).get("login", "") if isinstance(c.get("user"), dict) else ""
+        if not author.lower().startswith("claude"):
+            continue
+        created_at = c.get("created_at", "") or c.get("createdAt", "")
+        if cutoff and created_at and created_at < cutoff:
+            continue
+        body = c.get("body", "")
+        if not isinstance(body, str):
+            continue
+        filtered.append({"body": body, "createdAt": created_at})
+    if not filtered:
+        return ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
+        ) as fh:
+            json.dump(filtered, fh)
+            tmp_path = Path(fh.name)
+    except OSError:
+        return ""
+    try:
+        return extract_from_comments(tmp_path)
+    finally:
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+
+
 def main() -> int:
     if len(sys.argv) not in (2, 3):
         print(
@@ -252,6 +364,18 @@ def main() -> int:
         comments_verdict = extract_from_comments(comments_path)
         if comments_verdict:
             verdict = comments_verdict
+    elif (not verdict or verdict == PARSE_FAILED) and len(sys.argv) < 3:
+        # No comments file provided AND file verdict is empty /
+        # PARSE_FAILED. Auto-fetch the PR's claude-authored comments
+        # via `gh` CLI as a recovery path (issue #625 follow-up).
+        # Wrapped in try/except so any gh / network failure is a
+        # silent no-op rather than a script crash.
+        try:
+            auto_verdict = _auto_fetch_pr_comments_verdict()
+            if auto_verdict:
+                verdict = auto_verdict
+        except Exception:
+            pass
 
     # ALWAYS print to stdout (empty if not found). Caller uses stdout
     # to decide whether to use the file verdict or fall back.
