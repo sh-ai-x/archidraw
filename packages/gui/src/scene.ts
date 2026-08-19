@@ -44,9 +44,51 @@ export const clampCanvasBackingStore = ({cssW, cssH, maxDim, dpr}: {
  * SceneIO.handleLoad: it rejects scenes that are not plain objects, scenes
  * with too many elements, and scenes whose element tree exceeds
  * MAX_PARSE_DEPTH. Callers surface the result's `reason` to the user.
+ *
+ * estimateElementCountFromText is a *pre-parse* heuristic that runs BEFORE
+ * V8 touches the bytes — it counts `"id":` substrings (every Excalidraw
+ * element carries at least one `"id"` field) and rejects files whose
+ * element-count estimate already exceeds MAX_ELEMENTS. This closes the
+ * "24.9 MB JSON with millions of elements materialises in V8 before
+ * assertSceneShape rejects" gap that the post-parse guard left open
+ * (A08 major, 2026-08-19).
  */
 export const MAX_ELEMENTS = 5000;
 export const MAX_PARSE_DEPTH = 32;
+
+/**
+ * Cheap pre-parse element-count estimate. Counts `"id":` occurrences in
+ * the raw text — every Excalidraw element carries at least one `"id"`
+ * field, so the count is a lower bound on the actual element count. We
+ * use it to refuse *before* JSON.parse materialises the document; the
+ * exact element count is enforced by `assertSceneShape` after parse.
+ */
+export const estimateElementCountFromText = (text: string): number => {
+  if (!text) return 0;
+  // Count `"id"` followed (after optional whitespace) by `:` — both
+  // `:"a"` and ` : "a"` are legal JSON. The loop avoids allocating a
+  // regex match array per occurrence. This is a lower bound, not an
+  // exact count: a scene with `"id"` in a string literal would be
+  // over-counted. assertSceneShape gives the authoritative answer after
+  // parse — this is a fast reject only.
+  let count = 0;
+  for (let i = 0; i < text.length - 4; i++) {
+    if (text.charCodeAt(i) !== 34) continue;       // "
+    if (text.charCodeAt(i + 1) !== 105) continue;   // i
+    if (text.charCodeAt(i + 2) !== 100) continue;   // d
+    if (text.charCodeAt(i + 3) !== 34) continue;    // "
+    let j = i + 4;
+    // Whitespace: space, tab, LF, CR. JSON allows any whitespace between
+    // the closing quote of the key and the colon.
+    while (j < text.length) {
+      const c = text.charCodeAt(j);
+      if (c === 32 || c === 9 || c === 10 || c === 13) { j++; continue; }
+      break;
+    }
+    if (text.charCodeAt(j) === 58) count++;        // :
+  }
+  return count;
+};
 
 const DEPTH_SENTINEL = Symbol("depth-exceeded");
 

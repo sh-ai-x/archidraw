@@ -236,9 +236,10 @@ def _auto_fetch_pr_comments_verdict() -> str:
     """Issue #625 auto-fetch: when no comments file is provided on the
     command line, fetch the PR's comments via the `gh` CLI and scan
     them for the LAST `Verdict: <value>` line, filtered by author
-    (`claude*`) and cutoff timestamp (defeats the #244 stale-comment
-    flap — without the cutoff, a previous run's verdict would win and
-    the gate would flip-flop on every push).
+    (whitelisted GitHub user IDs — see TRUSTED_AUTHOR_IDS below) and
+    cutoff timestamp (defeats the #244 stale-comment flap — without
+    the cutoff, a previous run's verdict would win and the gate would
+    flip-flop on every push).
 
     Requires the `gh` CLI in PATH plus `GITHUB_TOKEN` (or `GH_TOKEN`)
     and `PR_NUMBER` env vars set. Returns "" on any failure (CLI
@@ -327,14 +328,21 @@ def _auto_fetch_pr_comments_verdict() -> str:
             comments_all = [json.loads(line) for line in raw.splitlines() if line.strip()]
     except json.JSONDecodeError:
         return ""
-    # Filter by author (claude[bot] / claude-*) and cutoff. Build the
-    # shape extract_from_comments expects: array of {body, createdAt}.
+    # A01 review (2026-08-19): author was previously filtered by login
+    # prefix `claude*`, which any attacker can satisfy by registering
+    # `claude-evil-fork`. Pin to specific GitHub user IDs instead —
+    # these are not centrally reserved but cannot be impersonated without
+    # compromising the upstream account. Whitelist:
+    #   209825114 — claude[bot]         (the AI reviewer/security)
+    #   285987422 — sh-ai-x (operator)  (override / re-verdict comments)
+    TRUSTED_AUTHOR_IDS = {209825114, 285987422}
     filtered: list[dict] = []
     for c in comments_all:
         if not isinstance(c, dict):
             continue
-        author = c.get("user", {}).get("login", "") if isinstance(c.get("user"), dict) else ""
-        if not author.lower().startswith("claude"):
+        user = c.get("user")
+        author_id = user.get("id") if isinstance(user, dict) else None
+        if not isinstance(author_id, int) or author_id not in TRUSTED_AUTHOR_IDS:
             continue
         created_at = c.get("created_at", "") or c.get("createdAt", "")
         if cutoff and created_at and created_at < cutoff:

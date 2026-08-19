@@ -1,6 +1,6 @@
 import type {JSX} from "react";
 import type {Element} from "@archidraw/schema";
-import {assertSceneShape, type SceneStore} from "./scene";
+import {assertSceneShape,estimateElementCountFromText,MAX_ELEMENTS,type SceneStore} from "./scene";
 
 /**
  * SceneIO — Save/Load buttons. Save writes the *active* tab's scene to a
@@ -49,12 +49,22 @@ export function SceneIO({
         return;
       }
       const text = await file.text();
+      // A08 review (2026-08-19): estimate element count from raw text
+      // BEFORE JSON.parse. A 24.9 MB JSON with millions of `"id":` entries
+      // fully materialises in V8's parser before assertSceneShape rejects —
+      // the cheap string scan refuses without ever touching the document.
+      const elementEstimate = estimateElementCountFromText(text);
+      if (elementEstimate > MAX_ELEMENTS) {
+        window.alert(`Invalid scene file: too many elements (${elementEstimate} > ${MAX_ELEMENTS})`);
+        return;
+      }
       try {
         const parsed = JSON.parse(text);
         // A06 / A10 review (2026-08-19): the 25 MB file-size cap isn't
         // enough — a small JSON can parse to millions of nested elements
         // or a pathologically deep object and freeze the tab. Reject
-        // before touching the store.
+        // before touching the store. estimateElementCountFromText runs
+        // first as a fast lower-bound; this is the authoritative check.
         const shape = assertSceneShape(parsed);
         if (!shape.ok) {
           window.alert(`Invalid scene file: ${shape.reason}`);
