@@ -55,10 +55,20 @@ if [[ $RUN_BRIDGE -eq 1 ]]; then
   (cd "$ROOT" && node .dev-kit/launchers/dev-bridge.cjs) > /tmp/archidraw-bridge.log 2>&1 &
   PIDS+=("$!")
   # wait for port
+  bridge_ready=0
   for _ in {1..20}; do
-    lsof -nP -iTCP:"$BRIDGE_PORT" -sTCP:LISTEN >/dev/null 2>&1 && break
+    lsof -nP -iTCP:"$BRIDGE_PORT" -sTCP:LISTEN >/dev/null 2>&1 && bridge_ready=1 && break
     sleep 0.2
   done
+  # A10 review (2026-08-19): silent fall-through when the bridge process
+  # dies (port never opens). Surface a hard failure so the user doesn't
+  # sit at an empty dev URL wondering why nothing loads.
+  if [[ $bridge_ready -eq 0 ]]; then
+    echo ":: archidraw: bridge did not open :$BRIDGE_PORT within 4s" >&2
+    echo "  tail of /tmp/archidraw-bridge.log:" >&2
+    tail -n 20 /tmp/archidraw-bridge.log >&2 2>/dev/null || true
+    exit 1
+  fi
 fi
 
 # 4. start vite (GUI) on $GUI_PORT.
@@ -73,10 +83,17 @@ GUI_HOST=127.0.0.1
 [[ "${LAN:-0}" == "1" ]] && GUI_HOST=0.0.0.0 && echo "→ gui: LAN-exposed (--lan)"
 (cd "$ROOT/packages/gui" && pnpm dev --port "$GUI_PORT" --strictPort --host "$GUI_HOST") > /tmp/archidraw-gui.log 2>&1 &
 PIDS+=("$!")
+gui_ready=0
 for _ in {1..40}; do
-  lsof -nP -iTCP:"$GUI_PORT" -sTCP:LISTEN >/dev/null 2>&1 && break
+  lsof -nP -iTCP:"$GUI_PORT" -sTCP:LISTEN >/dev/null 2>&1 && gui_ready=1 && break
   sleep 0.2
 done
+if [[ $gui_ready -eq 0 ]]; then
+  echo ":: archidraw: Vite GUI did not open :$GUI_PORT within 8s" >&2
+  echo "  tail of /tmp/archidraw-gui.log:" >&2
+  tail -n 20 /tmp/archidraw-gui.log >&2 2>/dev/null || true
+  exit 1
+fi
 
 # 5. open the browser
 if [[ $OPEN_BROWSER -eq 1 ]]; then
