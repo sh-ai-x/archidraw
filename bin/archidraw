@@ -52,7 +52,11 @@ PIDS=()
 # 3. start the bridge (publish/sse) on $BRIDGE_PORT
 if [[ $RUN_BRIDGE -eq 1 ]]; then
   echo "→ bridge: http://127.0.0.1:$BRIDGE_PORT  (publish + /events)"
-  (cd "$ROOT" && node .dev-kit/launchers/dev-bridge.cjs) > /tmp/archidraw-bridge.log 2>&1 &
+  # A10 review (2026-08-19): `exec` replaces the subshell with the node
+  # process so `$!` captures the *child* PID (not the subshell). SIGTERM
+  # sent to the subshell PID previously didn't reach node, leaving the
+  # dev server running and holding the port for the next launch.
+  (cd "$ROOT" && exec node .dev-kit/launchers/dev-bridge.cjs) > /tmp/archidraw-bridge.log 2>&1 &
   PIDS+=("$!")
   # wait for port
   bridge_ready=0
@@ -81,7 +85,9 @@ fi
 echo "→ gui:    http://localhost:$GUI_PORT/  (loopback)"
 GUI_HOST=127.0.0.1
 [[ "${LAN:-0}" == "1" ]] && GUI_HOST=0.0.0.0 && echo "→ gui: LAN-exposed (--lan)"
-(cd "$ROOT/packages/gui" && pnpm dev --port "$GUI_PORT" --strictPort --host "$GUI_HOST") > /tmp/archidraw-gui.log 2>&1 &
+# A10 review (2026-08-19): see bridge block above — `exec` so `$!` is
+# the pnpm dev PID, not the subshell, so cleanup() SIGTERM propagates.
+(cd "$ROOT/packages/gui" && exec pnpm dev --port "$GUI_PORT" --strictPort --host "$GUI_HOST") > /tmp/archidraw-gui.log 2>&1 &
 PIDS+=("$!")
 gui_ready=0
 for _ in {1..40}; do

@@ -322,7 +322,13 @@ def cmd_sync(args: argparse.Namespace) -> int:
         return 0
 
     if not issue:
-        # Create the issue if missing
+        # Create the issue if missing.
+        # A06 review (2026-08-19): concurrent webhook deliveries (e.g. PR
+        # opened + synchronize near-simultaneously) both see `issue == None`
+        # above and call _create_issue → duplicate Linear issues with the
+        # same scope marker. Re-query right after creation; if another
+        # caller raced us, prefer the pre-existing issue (idempotent
+        # end-state) and log the duplicate for cleanup.
         if args.pr_number and args.pr_title:
             title = f"PR #{args.pr_number}: {args.pr_title}"
         elif args.pr_number:
@@ -333,6 +339,18 @@ def cmd_sync(args: argparse.Namespace) -> int:
         if not issue:
             print(f"could not create issue for branch={args.branch}", file=sys.stderr)
             return 1
+        # Race-resolution pass: if a peer created an issue for the same
+        # branch between our _issue_by_branch check and _create_issue
+        # call, keep theirs (Linear API has no unique-constraint on the
+        # scope marker, so the duplicate is real until manually cleaned).
+        concurrent = _issue_by_branch(args.branch, project_id)
+        if concurrent and concurrent.get("id") != issue.get("id"):
+            print(
+                f"duplicate create: kept {concurrent['identifier']} (id={concurrent['id']}), "
+                f"discarded {issue['identifier']} (id={issue['id']}) — branch={args.branch}",
+                file=sys.stderr,
+            )
+            issue = concurrent
         print(f"created {issue['identifier']} → {target_state} (branch={args.branch})")
         return 0
 
