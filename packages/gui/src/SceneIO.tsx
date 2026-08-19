@@ -1,6 +1,6 @@
 import type {JSX} from "react";
 import type {Element} from "@archidraw/schema";
-import type {SceneStore} from "./scene";
+import {assertSceneShape, type SceneStore} from "./scene";
 
 /**
  * SceneIO — Save/Load buttons. Save writes the *active* tab's scene to a
@@ -39,9 +39,27 @@ export function SceneIO({
     input.onchange = async () => {
       const file = input.files?.[0];
       if (!file) return;
+      // 25 MB hard cap — a 1 GB file or one that parses to millions of
+      // nested elements can OOM the tab. Per A08 review on PR #48.
+      const MAX_BYTES = 25 * 1024 * 1024;
+      if (file.size > MAX_BYTES) {
+        // 25 MB cap (A08 review on PR #48). Alert is the only transient
+        // error sink — handleLoad is fire-and-forget outside React state.
+        window.alert(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB > 25 MB)`);
+        return;
+      }
       const text = await file.text();
       try {
         const parsed = JSON.parse(text);
+        // A06 / A10 review (2026-08-19): the 25 MB file-size cap isn't
+        // enough — a small JSON can parse to millions of nested elements
+        // or a pathologically deep object and freeze the tab. Reject
+        // before touching the store.
+        const shape = assertSceneShape(parsed);
+        if (!shape.ok) {
+          window.alert(`Invalid scene file: ${shape.reason}`);
+          return;
+        }
         const elements: Element[] = Array.isArray(parsed?.elements) ? parsed.elements : [];
         if (onLoadAsTab) {
           const baseName = file.name.replace(/\.[^.]+$/, "");
