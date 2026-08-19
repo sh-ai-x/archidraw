@@ -21,6 +21,11 @@ const SECTIONS:Array<{title:string;rows:Array<[string,string]>}>=[
     ["Ctrl/Cmd + A","Select all"],
     ["Ctrl/Cmd + D","Duplicate selected"],
   ]},
+  {title:"Scene",rows:[
+    ["Ctrl/Cmd + S","Save scene as JSON"],
+    ["Ctrl/Cmd + O","Open scene from JSON"],
+    ["Drag corner handle","Resize selected element"],
+  ]},
   {title:"History",rows:[
     ["Ctrl/Cmd + Z","Undo"],
     ["Ctrl/Cmd + Shift + Z / Ctrl+Y","Redo"],
