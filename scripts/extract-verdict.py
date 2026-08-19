@@ -265,6 +265,24 @@ def _auto_fetch_pr_comments_verdict() -> str:
         or os.environ.get("GITHUB_HEAD_COMMIT_TIMESTAMP")
         or ""
     )
+    # In GitHub Actions the cutoff is usually NOT set as an env var
+    # directly — review.yml builds it from `github.event.head_commit
+    # .timestamp || github.event.pull_request.updated_at`. Read the
+    # event JSON when available so we still filter stale comments
+    # without requiring workflow-file changes.
+    if not cutoff:
+        event_path = os.environ.get("GITHUB_EVENT_PATH")
+        if event_path and Path(event_path).exists():
+            try:
+                with Path(event_path).open(encoding="utf-8") as fh:
+                    event = json.loads(fh.read())
+                cutoff = (
+                    (event.get("head_commit") or {}).get("timestamp")
+                    or (event.get("pull_request") or {}).get("updated_at")
+                    or ""
+                )
+            except (OSError, json.JSONDecodeError):
+                pass
     # gh api needs the repo coordinates. Pull owner/repo from `gh repo
     # view --json nameWithOwner` so this works in any clone, not just
     # the canonical archidraw repo.
