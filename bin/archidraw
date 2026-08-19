@@ -61,10 +61,16 @@ if [[ $RUN_BRIDGE -eq 1 ]]; then
   done
 fi
 
-# 4. start vite (GUI) on $GUI_PORT bound to all interfaces
-echo "→ gui:    http://localhost:$GUI_PORT/"
+# 4. start vite (GUI) on $GUI_PORT.
+# Default: loopback (127.0.0.1) — the only thing listening is this machine.
+# Pass --lan to bind to all interfaces (e.g. for testing from another device).
+# The previous "OPEN_BROWSER=1 → bind 0.0.0.0" coupling was a regression:
+# opening the browser locally doesn't require LAN exposure, and silently
+# exposing the dev server on every interface is the kind of footgun the
+# A02/A06 majors from the 2026-08-19 security review flagged.
+echo "→ gui:    http://localhost:$GUI_PORT/  (loopback)"
 GUI_HOST=127.0.0.1
-[[ "$OPEN_BROWSER" == "1" || "$LAN" == "1" ]] && GUI_HOST=0.0.0.0
+[[ "${LAN:-0}" == "1" ]] && GUI_HOST=0.0.0.0 && echo "→ gui: LAN-exposed (--lan)"
 (cd "$ROOT/packages/gui" && pnpm dev --port "$GUI_PORT" --strictPort --host "$GUI_HOST") > /tmp/archidraw-gui.log 2>&1 &
 PIDS+=("$!")
 for _ in {1..40}; do
