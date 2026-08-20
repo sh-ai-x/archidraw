@@ -157,7 +157,7 @@ export const renderScene=(canvas:HTMLCanvasElement,elements:Element[],zoom=1,pan
     if(e.type==="rectangle"||e.type==="diamond"){
       const points=e.type==="diamond"
         ?[[e.x+e.width/2,e.y],[e.x+e.width,e.y+e.height/2],[e.x+e.width/2,e.y+e.height],[e.x,e.y+e.height/2],[e.x+e.width/2,e.y]]
-        :[[e.x,e.y],[e.x+e.width,e.y],[e.x,e.y+e.height],[e.x+e.width,e.y+e.height],[e.x+e.width,e.y]];
+        :[[e.x,e.y],[e.x+e.width,e.y],[e.x+e.width,e.y+e.height],[e.x,e.y+e.height],[e.x,e.y]];
       rc.path(`M ${points.map(p=>p.join(" ")).join(" L ")}`,opts);
     } else if(e.type==="ellipse"){
       rc.ellipse(e.x+e.width/2,e.y+e.height/2,Math.abs(e.width),Math.abs(e.height),opts);

@@ -9,6 +9,7 @@ import {tabsStore} from "./tabs-state";
 import {SceneIO} from "./SceneIO";
 import {LayoutPanel} from "./LayoutPanel";
 import {SnapshotPanel} from "./SnapshotPanel";
+import {silentAutoFix} from "./layout";
 import type {Element} from "@archidraw/schema";
 import "./styles.css";
 
@@ -22,16 +23,19 @@ export function App(){
     seededRef.current=true;
     const els=store.getScene().elements;
     if(!els.length)return;
-    void import("./LayoutPanel")
-      .then(({silentAutoFix})=>{
-        const fixed=silentAutoFix(els);
-        if(fixed===els)return;
-        for(const e of store.queryElements({includeDeleted:true}))store.deleteElement(e.id);
-        for(const v of fixed)store.createElement(v);
-      })
-      // A10-1 (2026-08-19): surface dynamic-import failure rather than
-      // leaving a stale store when the chunk is missing or threw.
-      .catch((err)=>{console.error("[App] silentAutoFix bootstrap failed", err);});
+    // PR #48 review (2026-08-20, 🟠 major #2): silentAutoFix moved to
+    // ./layout.ts so App.tsx can import it statically. The previous
+    // dynamic import of the React component to reach the pure function
+    // added bundle-split risk (chunk missing → stale store on bootstrap,
+    // see A10-1) without any benefit.
+    try {
+      const fixed = silentAutoFix(els);
+      if (fixed === els) return;
+      for (const e of store.queryElements({includeDeleted:true})) store.deleteElement(e.id);
+      for (const v of fixed) store.createElement(v);
+    } catch (err) {
+      console.error("[App] silentAutoFix bootstrap failed", err);
+    }
   },[store]);
   const [tool,setTool]=useState<Tool>("select");
   const [showHelp,setShowHelp]=useState(false);
