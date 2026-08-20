@@ -4,11 +4,11 @@ import {Toolbar} from "./Toolbar";
 import {HelpModal} from "./HelpModal";
 import {createMemoryStore,type Tool} from "./scene";
 import {subscribeToSceneDeltas} from "./bridge-client";
-import {SceneTabs} from "./SceneTabs";
+import {SceneTabs, type SceneTabsHandle} from "./SceneTabs";
 import {SceneIO} from "./SceneIO";
 import {LayoutPanel} from "./LayoutPanel";
 import {SnapshotPanel} from "./SnapshotPanel";
-import type {Element, ExcalidrawScene} from "@archidraw/schema";
+import type {Element} from "@archidraw/schema";
 import "./styles.css";
 
 export function App(){
@@ -34,6 +34,9 @@ export function App(){
   },[store]);
   const [tool,setTool]=useState<Tool>("select");
   const [showHelp,setShowHelp]=useState(false);
+  // Forwarded handle to SceneTabs so handleLoadAsTab can route through
+  // its own state instead of bypassing it via localStorage. PR #48.
+  const tabsRef = useRef<SceneTabsHandle | null>(null);
 
   // ? key + Shift+/ toggles help modal
   useEffect(()=>{
@@ -99,32 +102,30 @@ export function App(){
   };
 
   // Called by SceneIO when loading a file as a new tab.
+  // PR #48 review (2026-08-20, 🔴 critical #2): the previous version
+  // wrote `archidraw:tabs` and `archidraw:activeTab` to localStorage
+  // directly, but SceneTabs has its own debounced persist that
+  // overwrote the new tab on the next tick — the loaded tab never
+  // appeared. Route through SceneTabs's forwarded createTab handle so
+  // the new tab lives in the same React state the rest of the UI
+  // reads from.
   const handleLoadAsTab = (name: string, elements: Element[]) => {
-    const id = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2));
-    // First, swap store to loaded elements.
+    // Mirror the new scene into the store so the canvas shows it
+    // immediately. SceneTabs's auto-save effect (driven by
+    // sceneVersion) will then persist the active tab on the next
+    // mutation tick.
     for (const el of store.queryElements({includeDeleted:true})) store.deleteElement(el.id);
     for (const el of elements) {
       if (el && !el.isDeleted) store.createElement(structuredClone(el));
     }
-    // Then append a new tab record + set as active.
-    try {
-      const raw = localStorage.getItem("archidraw:tabs");
-      const tabs = raw ? JSON.parse(raw) as Array<{id:string;name:string;scene:ExcalidrawScene}> : [];
-      const tab = { id, name, scene: { type: "excalidraw" as const, version: 2, source: "archidraw", elements: store.getScene().elements, appState: {}, files: {} } };
-      tabs.push(tab);
-      localStorage.setItem("archidraw:tabs", JSON.stringify(tabs));
-      localStorage.setItem("archidraw:activeTab", id);
-    } catch {
-      // best effort
-    }
+    tabsRef.current?.createTab(name, elements);
   };
 
   return <main className="app">
     <Toolbar active={tool} onChange={setTool}/>
     <div className="canvas-area">
       <SceneTabs
+        ref={tabsRef}
         store={store}
         sceneVersion={sceneVersion}
         onActiveChange={handleTabActiveChange}

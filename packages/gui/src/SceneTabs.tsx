@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, type JSX} from "react";
+import {forwardRef, useEffect, useImperativeHandle, useRef, useState, type JSX} from "react";
 import type {Element} from "@archidraw/schema";
 import type {SceneStore} from "./scene";
 import {
@@ -19,6 +19,20 @@ interface SceneTabsProps {
   rightSlot?: React.ReactNode;
 }
 
+/** Imperative handle exposed to parents via the forwarded ref. */
+export interface SceneTabsHandle {
+  /**
+   * Create a new tab from the given elements and switch to it. Bypasses
+   * `localStorage` — all tab-state mutations stay inside React so the
+   * component's own debounced persist can't overwrite the new tab.
+   * PR #48 review (2026-08-20, 🔴 critical #2): the previous
+   * App.handleLoadAsTab wrote `archidraw:tabs` directly, which
+   * SceneTabs's 300ms debounced persist then overwrote on the next
+   * tick, dropping the loaded tab.
+   */
+  createTab: (name: string, elements: Element[]) => void;
+}
+
 const PERSIST_DEBOUNCE_MS = 300;
 
 /**
@@ -26,7 +40,7 @@ const PERSIST_DEBOUNCE_MS = 300;
  * swap-tab behavior (rewriting the store contents when the active tab changes),
  * inline rename, and per-tab delete with a non-empty confirmation.
  */
-export function SceneTabs({store, sceneVersion, onActiveChange, rightSlot}: SceneTabsProps): JSX.Element {
+export const SceneTabs = forwardRef<SceneTabsHandle, SceneTabsProps>(function SceneTabs({store, sceneVersion, onActiveChange, rightSlot}, ref): JSX.Element {
   const [state, setState] = useState<TabsState>(() => {
     const loaded = loadTabsState();
     if (loaded) return loaded;
@@ -37,6 +51,30 @@ export function SceneTabs({store, sceneVersion, onActiveChange, rightSlot}: Scen
   const [draftName, setDraftName] = useState("");
   const lastEmittedTabId = useRef<string | null>(null);
   const lastSavedVersion = useRef<number>(-1);
+
+  // Expose createTab so App.handleLoadAsTab can route through this
+  // component's own state instead of writing localStorage directly
+  // (PR #48 review, 2026-08-20).
+  useImperativeHandle(ref, () => ({
+    createTab: (name, elements) => {
+      const id = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2) + Date.now().toString(36));
+      const tab: Tab = {
+        id,
+        name,
+        scene: {
+          type: "excalidraw",
+          version: 2,
+          source: "archidraw",
+          elements: structuredClone(elements),
+          appState: {},
+          files: {},
+        },
+      };
+      setState(s => ({ tabs: [...s.tabs, tab], activeTabId: id }));
+    },
+  }), []);
 
   // Persist on a 300ms debounce.
   const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -183,4 +221,4 @@ export function SceneTabs({store, sceneVersion, onActiveChange, rightSlot}: Scen
       {rightSlot && <div className="scene-tabs-right">{rightSlot}</div>}
     </div>
   );
-}
+});

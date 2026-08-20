@@ -29,7 +29,11 @@ export function LayoutPanel({ store }: { store: SceneStore }) {
 
   function runAutoFix(): void {
     setStatus("running"); setText("auto-fixing…");
-    const fixed = autoFix(store.getScene().elements);
+    // PR #48 review (2026-08-20, 🔴 critical): only `silentAutoFix` is
+    // exported by this module — `autoFix` is undefined. ReferenceError
+    // left the status chip stuck on "running" and the fix was never
+    // published via the bridge. Regressed by layoutpanel-autofix.test.ts.
+    const fixed = silentAutoFix(store.getScene().elements);
     const remaining = countIssues(fixed);
     // Publish via the bridge
     void publishDelta([{ op: "replace", path: "/elements", value: fixed }])

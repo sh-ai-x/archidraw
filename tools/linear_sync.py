@@ -1240,7 +1240,7 @@ def _changed_files_since(repo: Path, base: str = "origin/main") -> list[tuple[st
     the Linear description under the 64 KiB limit."""
     try:
         out = subprocess.check_output(
-            ["git", "dif", "--numstat", f"{base}...HEAD"],
+            ["git", "diff", "--numstat", f"{base}...HEAD"],
             cwd=str(repo), stderr=subprocess.DEVNULL, timeout=2,
         ).decode("utf-8", "ignore")
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
@@ -1588,7 +1588,7 @@ def sync() -> int:
         if matches:
             api_state_name = str((matches[0].get("state") or {}).get("name") or "")
 
-                # Step 5 — auto-Done. Completion verb + existing issue -> Done.
+        # Step 5 — auto-Done. Completion verb + existing issue -> Done.
         # State guard: if the issue is already in a terminal state
         # (Done / Canceled), do NOT resurrect it — the user may have
         # moved it manually in the Linear UI.
