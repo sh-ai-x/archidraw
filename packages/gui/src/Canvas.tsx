@@ -126,10 +126,47 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
     onDoubleClick={e=>{
       const p=world(e as unknown as React.PointerEvent);
       if(tool!=="select")return;
-      const hit=[...elements].reverse().find(el=>el.type==="text"&&pointInElement(el,p.x,p.y,8));
-      if(hit){
-        const next=window.prompt("Edit text:",String((hit as any).text||""));
-        if(next!==null&&next.trim()!=="")store.updateElement(hit.id,{text:next,originalText:next} as any);
+      const textHit=[...elements].reverse().find(el=>el.type==="text"&&pointInElement(el,p.x,p.y,8));
+      if(textHit){
+        const next=window.prompt("Edit text:",String((textHit as any).text||""));
+        if(next!==null&&next.trim()!=="")store.updateElement(textHit.id,{text:next,originalText:next} as any);
+        return;
+      }
+      // Double-click on a shape → create a text element bound to that shape
+      // (Excalidraw-style "text inside rectangle"). The renderer's
+      // containerId branch wraps + flushes the text to the shape's bounds
+      // with no left padding, so the user types once and the text fills the
+      // shape evenly.
+      const shapeHit=[...elements].reverse().find(el=>(el.type==="rectangle"||el.type==="diamond"||el.type==="ellipse")&&pointInElement(el,p.x,p.y,0));
+      if(shapeHit){
+        const content=window.prompt("Text:",String((shapeHit as any).text||""));
+        if(content===null)return;
+        const id=(typeof crypto!=="undefined"&&typeof crypto.randomUUID==="function"
+          ?crypto.randomUUID()
+          :Math.random().toString(36).slice(2));
+        // Place the text element's own bounds at the shape's bounds so the
+        // legacy non-container code path is a no-op fallback. The renderer
+        // ignores these when containerId is set. Defaults are forced to
+        // (textAlign=left, verticalAlign=top) so the text starts at the
+        // shape's top-left corner with no left-bias — the renderer wraps
+        // long text down from there.
+        const txt:any={
+          ...makeElement("text",shapeHit.x,shapeHit.y,shapeHit.width,shapeHit.height),
+          id,
+          text:content,
+          originalText:content,
+          containerId:shapeHit.id,
+          width:shapeHit.width,
+          height:shapeHit.height,
+          textAlign:"left",
+          verticalAlign:"top",
+        };
+        // Mark the shape as having a bound text element (Excalidraw-style).
+        const curBound=(shapeHit.boundElements||[]).filter(b=>b.type==="text");
+        store.updateElement(shapeHit.id,{boundElements:[...curBound,{id,type:"text"}]});
+        store.createElement(txt);
+        setSelected(id);
+        setTool("select");
       }
     }}
     onWheel={e=>{
