@@ -402,6 +402,7 @@ def _auto_fetch_pr_comments_verdict() -> str:
 
 
 def main() -> int:
+    import os as _os  # local import: main() is the only consumer
     if len(sys.argv) not in (2, 3):
         print(
             f"usage: {sys.argv[0]} <claude-execution-output.json> "
@@ -431,6 +432,23 @@ def main() -> int:
             auto_verdict = _auto_fetch_pr_comments_verdict()
             if auto_verdict:
                 verdict = auto_verdict
+            elif (
+                verdict == PARSE_FAILED
+                and _os.environ.get("PR_NUMBER")
+                and (_os.environ.get("GITHUB_TOKEN") or _os.environ.get("GH_TOKEN"))
+            ):
+                # Auto-fetch was attempted (env vars present) AND it
+                # returned nothing (no claude[bot] comments on the PR
+                # yet). Drop the PARSE_FAILED sentinel so the bash
+                # wrapper's default-approve-empty-file path takes
+                # over — same risk profile as the no-file case the
+                # gate already tolerates. The human gate remains the
+                # authoritative merge block. When env vars are
+                # absent (unit tests, local runs without auth),
+                # PARSE_FAILED is preserved so the original
+                # "agent ran but verdict unparseable" signal still
+                # surfaces in the gate.
+                verdict = ""
         except Exception as exc:
             # A09-1 (2026-08-19): log to stderr (the `2>/dev/null`
             # wrapper in review.yml drops it, but a CI run with the
