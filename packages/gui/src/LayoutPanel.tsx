@@ -32,11 +32,15 @@ export function LayoutPanel({ store }: { store: SceneStore }) {
     const fixed = autoFix(store.getScene().elements);
     const remaining = countIssues(fixed);
     // Publish via the bridge
-    void publishDelta([{ op: "replace", path: "/elements", value: fixed }]).then(() => {
-      // The App's subscriber will rebuild the local store; nothing else to do.
-      setStatus("fixed");
-      setText(remaining === 0 ? "✓ fixed" : `⚠ ${remaining} left`);
-    });
+    void publishDelta([{ op: "replace", path: "/elements", value: fixed }])
+      .then(() => {
+        // The App's subscriber will rebuild the local store; nothing else to do.
+        setStatus("fixed");
+        setText(remaining === 0 ? "✓ fixed" : `⚠ ${remaining} left`);
+      })
+      // A10-2 (2026-08-19): don't claim "✓ fixed" if the bridge POST
+      // actually failed. Roll the UI back to "error" + the reason.
+      .catch((err)=>{setStatus("error"); setText(`✗ ${err?.message ?? "publish failed"}`);});
   }
 
   return (

@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from "react";
 import type {Element} from "@archidraw/schema";
-import {makeElement,pointInElement,type SceneStore,type Tool} from "./scene";
+import {clampCanvasBackingStore,makeElement,pointInElement,type SceneStore,type Tool} from "./scene";
 import {renderScene} from "./Renderer";
 import {boundingBoxFromElements} from "./tabs-state";
 
@@ -21,16 +21,26 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
   const DRAGGING_THRESHOLD=3;
   const elements=store.queryElements();
   const bbox=boundingBoxFromElements(elements);
-  const cssW=Math.max(bbox.w,800);
-  const cssH=Math.max(bbox.h,600);
+  // A06 review: cap canvas size to prevent unbounded allocation if bbox is huge
+  // (e.g. tampered localStorage with attacker-controllable coordinates).
+  const MAX_DIM = 16384;
+  const cssW=Math.min(Math.max(bbox.w,800), MAX_DIM);
+  const cssH=Math.min(Math.max(bbox.h,600), MAX_DIM);
 
   // 1. render whenever scene/zoom/pan/selection changes
   useEffect(()=>{
     const c=ref.current;
     if(!c)return;
     const resize=()=>{
-      c.width=Math.round(cssW*devicePixelRatio);
-      c.height=Math.round(cssH*devicePixelRatio);
+      // Cap the BACKING STORE (cssW*dpr) so a 3x-DPR display can't blow
+      // past MAX_DIM. cssW/cssH are already <= MAX_DIM, so a HiDPI display
+      // just gets cssW/cssH clipped to MAX_DIM/devicePixelRatio to honor
+      // the cap on the GPU allocation. See clampCanvasBackingStore for
+      // the A06 backing-store DoS class this closes.
+      const dpr = window.devicePixelRatio || 1;
+      const {w, h} = clampCanvasBackingStore({cssW, cssH, maxDim: MAX_DIM, dpr});
+      c.width=Math.round(w*dpr);
+      c.height=Math.round(h*dpr);
       renderScene(c,elements,zoom,pan,selected,marquee,multiSel);
     };
     resize();
