@@ -5,7 +5,7 @@ import {HelpModal} from "./HelpModal";
 import {createMemoryStore,type Tool} from "./scene";
 import {subscribeToSceneDeltas} from "./bridge-client";
 import {SceneTabs} from "./SceneTabs";
-import {tabsStore} from "./tabs-state";
+import {tabsStore, useTabsStore} from "./tabs-state";
 import {SceneIO} from "./SceneIO";
 import {LayoutPanel} from "./LayoutPanel";
 import {SnapshotPanel} from "./SnapshotPanel";
@@ -23,11 +23,6 @@ export function App(){
     seededRef.current=true;
     const els=store.getScene().elements;
     if(!els.length)return;
-    // PR #48 review (2026-08-20, 🟠 major #2): silentAutoFix moved to
-    // ./layout.ts so App.tsx can import it statically. The previous
-    // dynamic import of the React component to reach the pure function
-    // added bundle-split risk (chunk missing → stale store on bootstrap,
-    // see A10-1) without any benefit.
     try {
       const fixed = silentAutoFix(els);
       if (fixed === els) return;
@@ -82,13 +77,20 @@ export function App(){
     return()=>unsub();
   },[store]);
 
-  // Called by SceneTabs when the active tab changes: rewrite store to match.
-  const handleTabActiveChange = (active: { tabs: Array<{id:string;name:string;scene:{elements:Element[]}}>; activeTabId: string | null }) => {
-    const activeTab = active.tabs.find(t => t.id === active.activeTabId);
+  // 🟠 major #3 follow-up (2026-08-20): subscribe to the activeTabId
+  // here instead of receiving it via the onActiveChange callback prop.
+  // App now owns the active-tab → store sync; SceneTabs is purely
+  // presentational (it only dispatches user actions back to
+  // tabsStore). Drops one of the three synchronizers the reviewer
+  // flagged.
+  const activeTabId = useTabsStore(s => s.activeTabId);
+  useEffect(() => {
+    if (!activeTabId) return;
+    const state = tabsStore.getState();
+    const activeTab = state.tabs.find(t => t.id === activeTabId);
     if (!activeTab) return;
-    const next = activeTab.scene.elements.filter(e => !e.isDeleted);
+    const next = activeTab.scene.elements.filter((e: Element) => !e.isDeleted);
     const current = store.queryElements({includeDeleted:true});
-    // Skip if already in sync (cheap id+position+size compare).
     if (current.length === next.length) {
       let same = true;
       for (let i = 0; i < current.length; i++) {
@@ -101,22 +103,10 @@ export function App(){
     }
     for (const el of store.queryElements({includeDeleted:true})) store.deleteElement(el.id);
     for (const el of next) store.createElement(structuredClone(el));
-  };
+  }, [activeTabId, store]);
 
-  // F09 review (2026-08-20): tabs state lives in `tabsStore` (a
-  // module-level store with subscribe/getState + actions). App calls
-  // `tabsStore.createTab(name, elements)` directly — no forwarded ref,
-  // no useImperativeHandle, no null-guard dance on tabsRef.
-  // F10 / A10-1 follow-up: handleLoadAsTab previously alerted + bailed
-  // when tabsRef.current was null (unmount / Suspense delay). With the
-  // store, createTab is synchronous and never null — the alert path is
-  // dead code and is removed.
   const handleLoadAsTab = (name: string, elements: Element[]) => {
     tabsStore.createTab(name, elements);
-    // Mirror the new scene into the store so the canvas shows it
-    // immediately. SceneTabs's auto-save effect (driven by
-    // sceneVersion) will then persist the active tab on the next
-    // mutation tick.
     for (const el of store.queryElements({includeDeleted:true})) store.deleteElement(el.id);
     for (const el of elements) {
       if (el && !el.isDeleted) store.createElement(structuredClone(el));
@@ -129,7 +119,6 @@ export function App(){
       <SceneTabs
         store={store}
         sceneVersion={sceneVersion}
-        onActiveChange={handleTabActiveChange}
         rightSlot={<><SceneIO store={store} onLoadAsTab={handleLoadAsTab}/><LayoutPanel store={store}/><SnapshotPanel/></>}
       />
       <section className="canvas-shell">
