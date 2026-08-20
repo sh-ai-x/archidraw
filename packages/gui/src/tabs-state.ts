@@ -1,4 +1,5 @@
 import type {Element, ExcalidrawScene} from "@archidraw/schema";
+import {assertSceneShape} from "./scene";
 
 export interface Tab {
   id: string;
@@ -87,7 +88,13 @@ export function loadTabsState(): TabsState | null {
     if (!Array.isArray(tabs) || tabs.length === 0) return null;
     const activeRaw = localStorage.getItem(ACTIVE_KEY);
     const activeTabId = activeRaw && tabs.some(t => t.id === activeRaw) ? activeRaw : tabs[0].id;
-    // Validate each tab has the minimum scene shape; if not, drop to empty.
+    // A06-2 / A08-5 review (2026-08-20): previous guard only checked
+    // `type === "excalidraw"` + `Array.isArray(elements)`, which a
+    // tampered localStorage payload can satisfy with a million-element
+    // array and freeze the tab on hydration. Run assertSceneShape so
+    // the same MAX_ELEMENTS / MAX_PARSE_DEPTH guards SceneIO uses
+    // apply on hydration. A failing shape is replaced with an empty
+    // scene (the local equivalent of SceneIO's user-facing alert).
     const cleaned = tabs.map(t => ({
       id: String(t.id),
       name: String(t.name ?? "Untitled"),
@@ -100,7 +107,13 @@ export function loadTabsState(): TabsState | null {
 }
 
 function isValidScene(scene: unknown): scene is ExcalidrawScene {
-  return !!scene && typeof scene === "object" &&
-    (scene as ExcalidrawScene).type === "excalidraw" &&
-    Array.isArray((scene as ExcalidrawScene).elements);
+  // A06-2 / A08-5 (2026-08-20): chain into assertSceneShape so the
+  // MAX_ELEMENTS / MAX_PARSE_DEPTH guards apply on hydration, not
+  // just on file load. The cheap `type + elements array` check is
+  // preserved so a non-object (e.g. string, number) cannot crash
+  // assertSceneShape's structural walks.
+  if (!scene || typeof scene !== "object") return false;
+  const s = scene as ExcalidrawScene;
+  if (s.type !== "excalidraw" || !Array.isArray(s.elements)) return false;
+  return assertSceneShape(s).ok;
 }

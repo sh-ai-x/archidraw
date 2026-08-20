@@ -109,7 +109,19 @@ export function App(){
   // appeared. Route through SceneTabs's forwarded createTab handle so
   // the new tab lives in the same React state the rest of the UI
   // reads from.
+  // A10-1 review (2026-08-20): if tabsRef.current is null (unmount,
+  // ref-stale, lazy Suspense delay) the previous version silently
+  // degraded to an in-place overwrite of the current scene. Gate the
+  // store mutation on createTab actually running.
   const handleLoadAsTab = (name: string, elements: Element[]) => {
+    if (!tabsRef.current) {
+      // A10-1: surface the failure instead of silently overwriting
+      // the current scene. The operator can retry once SceneTabs has
+      // mounted.
+      window.alert("Tab panel not ready yet — try again in a moment.");
+      return;
+    }
+    tabsRef.current.createTab(name, elements);
     // Mirror the new scene into the store so the canvas shows it
     // immediately. SceneTabs's auto-save effect (driven by
     // sceneVersion) will then persist the active tab on the next
@@ -118,7 +130,6 @@ export function App(){
     for (const el of elements) {
       if (el && !el.isDeleted) store.createElement(structuredClone(el));
     }
-    tabsRef.current?.createTab(name, elements);
   };
 
   return <main className="app">
