@@ -209,6 +209,41 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
       if(tool==="text"){
         const content=window.prompt("Text:","");
         if(content===null||content.trim()==="")return;
+        // If the click landed inside a rectangle/diamond/ellipse, bind the
+        // text to that shape — Excalidraw-style "text in shape". The
+        // renderer then flushes it to the shape's top-left with a
+        // symmetric 4px inset and word-wraps to the inner width, so the
+        // text fills the shape from the left edge regardless of WHERE in
+        // the shape the user clicked. Without this auto-bind, a click in
+        // the middle of a shape created a standalone text element that
+        // appeared at the click point (visually biased right inside the
+        // shape's frame), which the user reports as "pushed right".
+        const shapeHit=[...elements].reverse().find(el=>(el.type==="rectangle"||el.type==="diamond"||el.type==="ellipse")&&pointInElement(el,p.x,p.y,0));
+        if(shapeHit){
+          const id=(typeof crypto!=="undefined"&&typeof crypto.randomUUID==="function"
+            ?crypto.randomUUID()
+            :Math.random().toString(36).slice(2));
+          const txt:any={
+            ...makeElement("text",shapeHit.x,shapeHit.y,shapeHit.width,shapeHit.height),
+            id,
+            text:content,
+            originalText:content,
+            containerId:shapeHit.id,
+            width:shapeHit.width,
+            height:shapeHit.height,
+            textAlign:"left",
+            verticalAlign:"top",
+          };
+          const curBound=(shapeHit.boundElements||[]).filter(b=>b&&typeof b==="object"&&b.type==="text");
+          store.updateElement(shapeHit.id,{boundElements:[...curBound,{id,type:"text"}]});
+          store.createElement(txt);
+          setSelected(id);
+          setTool("select");
+          return;
+        }
+        // No shape under the click — fall back to standalone text at the
+        // click point. Renderer still defaults to (textAlign=left,
+        // verticalAlign=top) so the text flushes to its own x, y.
         const el=makeElement("text",p.x,p.y,Math.max(content.length*12,80),28);
         (el as any).text=content;(el as any).originalText=content;
         store.createElement(el);setSelected(el.id);setTool("select");
