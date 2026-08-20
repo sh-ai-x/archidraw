@@ -400,8 +400,19 @@ def main() -> int:
             auto_verdict = _auto_fetch_pr_comments_verdict()
             if auto_verdict:
                 verdict = auto_verdict
-        except Exception:
-            pass
+        except Exception as exc:
+            # A09-1 (2026-08-19): log to stderr (the `2>/dev/null`
+            # wrapper in review.yml drops it, but a CI run with the
+            # default would surface it) so an expired GITHUB_TOKEN or
+            # network failure isn't silently degrading the gate to
+            # "no verdict → Approve". Exception type + message only,
+            # never the full traceback (the body might embed attacker-
+            # controlled text from a malformed PR comment).
+            print(
+                f"extract-verdict: auto-fetch failed "
+                f"({type(exc).__name__}: {exc})",
+                file=sys.stderr,
+            )
 
     # ALWAYS print to stdout (empty if not found). Caller uses stdout
     # to decide whether to use the file verdict or fall back.
