@@ -6,27 +6,30 @@
 // (canvas backing ≤ 16384 px), the input is at most 16384, so the
 // export canvas is 32768 × 32768 — that's 32768² × 4 bytes ≈ 4 GiB of
 // pixel data, which Chromium silently caps at 32767 and OOMs the tab
-// before the user can recover. Clamp to `MAX_DIM` (same constant the
-// renderer's backing-store cap uses) so the export stays bounded.
+// before the user can recover. Clamp to `MAX_CANVAS_DIM` (same constant
+// the renderer's backing-store cap uses) so the export stays bounded.
+// F12 review (2026-08-20): MAX_CANVAS_DIM (and clampCanvasBackingStore)
+// is hoisted into scene.ts so Canvas.tsx + SnapshotPanel.tsx cannot
+// drift apart.
 //
 // A10-5 review (2026-08-20): `ctx.drawImage(canvas, …)` can throw
 // SecurityError if a future change introduces a cross-origin image
 // into the source canvas. Surface the failure instead of swallowing
 // it.
-const MAX_DIM = 16384;
+import {MAX_CANVAS_DIM} from "./scene";
 
 export function SnapshotPanel() {
   function download(): void {
     const canvas = document.querySelector<HTMLCanvasElement>(".canvas");
     if (!canvas) return;
     // Use a fresh off-screen canvas at 2x resolution for crisp output.
-    // Clamp the OUTPUT dims to MAX_DIM so the export stays bounded —
+    // Clamp the OUTPUT dims to MAX_CANVAS_DIM so the export stays bounded —
     // a tampered localStorage payload that pre-sets the canvas
     // backing store to 16384 still produces a 16384×16384 PNG
     // (≈1 GiB, Chromium-allowed) instead of the previous 4 GiB.
     const scale = 2;
-    const outW = Math.min(canvas.width * scale, MAX_DIM);
-    const outH = Math.min(canvas.height * scale, MAX_DIM);
+    const outW = Math.min(canvas.width * scale, MAX_CANVAS_DIM);
+    const outH = Math.min(canvas.height * scale, MAX_CANVAS_DIM);
     const out = document.createElement("canvas");
     out.width = outW;
     out.height = outH;
@@ -45,7 +48,16 @@ export function SnapshotPanel() {
     }
     try {
       out.toBlob((blob) => {
-        if (!blob) return;
+        // F01 review (2026-08-20): toBlob's callback can fire with `null`
+        // when the encoder fails to produce a blob (e.g. memory pressure
+        // on a near-cap canvas). The previous `if (!blob) return;`
+        // silently swallowed the failure; the surrounding try/catch
+        // only catches sync throws. Surface the failure so the operator
+        // can recover (close other tabs, reduce scene size, retry).
+        if (!blob) {
+          window.alert("PNG export failed: encoder returned no blob (try reducing the canvas size).");
+          return;
+        }
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;

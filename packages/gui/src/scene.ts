@@ -10,7 +10,11 @@ export const emptyScene=():ExcalidrawScene=>({type:"excalidraw",version:2,source
 // array and freeze the tab. Run `assertSceneShape` so the same
 // MAX_ELEMENTS / MAX_PARSE_DEPTH guards SceneIO uses apply on
 // hydration too.
-export const loadScene=():ExcalidrawScene=>{try{const raw=localStorage.getItem(KEY);if(raw){const parsed=JSON.parse(raw);if(parsed?.type==="excalidraw"&&Array.isArray(parsed.elements)&&assertSceneShape(parsed).ok)return parsed}}catch{}return emptyScene()};
+// F11 review (2026-08-20): the `type === "excalidraw" && Array.isArray(elements)`
+// pre-check is redundant — assertSceneShape already enforces both,
+// plus the elements-count / parse-depth guards. Let assertSceneShape
+// be the single source of truth for shape validation.
+export const loadScene=():ExcalidrawScene=>{try{const raw=localStorage.getItem(KEY);if(raw){const parsed=JSON.parse(raw);if(parsed&&assertSceneShape(parsed).ok)return parsed as ExcalidrawScene}}catch{}return emptyScene()};
 export const saveScene=(scene:ExcalidrawScene)=>{try{localStorage.setItem(KEY,JSON.stringify(scene))}catch{}};
 export const pointInElement=(element:Element,x:number,y:number,tolerance=8)=>{const left=Math.min(element.x,element.x+element.width)-tolerance;const top=Math.min(element.y,element.y+element.height)-tolerance;const right=Math.max(element.x,element.x+element.width)+tolerance;const bottom=Math.max(element.y,element.y+element.height)+tolerance;if(element.type!=="arrow"&&element.type!=="line")return x>=left&&x<=right&&y>=top&&y<=bottom;const points=element.points.map(([px,py])=>[element.x+px,element.y+py] as Point);return points.some(([px,py])=>Math.hypot(x-px,y-py)<=tolerance)||points.slice(1).some(([a,b],i)=>{const [c,d]=points[i];const len=Math.hypot(a-c,b-d)||1;return Math.abs((b-d)*x-(a-c)*y+a*d-b*c)/len<=tolerance&&x>=Math.min(a,c)-tolerance&&x<=Math.max(a,c)+tolerance&&y>=Math.min(b,d)-tolerance&&y<=Math.max(b,d)+tolerance})};
 export const makeElement=(type:Exclude<Tool,"select"|"erase">,x:number,y:number,w:number,h:number,seed=Date.now()):Element=>{const base={id:crypto.randomUUID(),type,x,y,width:w,height:h,angle:0,strokeColor:"#1f2937",backgroundColor:"transparent",fillStyle:"solid",strokeWidth:2,strokeStyle:"solid",roughness:1,opacity:100,groupIds:null,frameId:null,index:null,roundness:null,seed,versionNonce:seed,isDeleted:false,boundElements:null,updated:Date.now(),link:null,locked:false} as const;if(type==="arrow"||type==="line")return {...base,type,points:[[0,0],[w,h]],startBinding:null,endBinding:null,startArrowhead:type==="arrow"?null:null,endArrowhead:type==="arrow"?"arrow":null} as Element;if(type==="text")return {...base,type,width:Math.max(w,80),height:28,fontSize:20,fontFamily:1,text:"Text",textAlign:"left",verticalAlign:"top",containerId:null,originalText:"Text",lineHeight:1.2,baseline:20} as Element;return {...base,type} as Element};
@@ -61,6 +65,15 @@ export const clampCanvasBackingStore = ({cssW, cssH, maxDim, dpr}: {
  */
 export const MAX_ELEMENTS = 5000;
 export const MAX_PARSE_DEPTH = 32;
+
+/**
+ * Maximum canvas dimension (longest axis) for both the renderer backing
+ * store and the SnapshotPanel PNG export. Hoisted from Canvas.tsx and
+ * SnapshotPanel.tsx (which used to declare their own `MAX_DIM = 16384`)
+ * so the two files that must change together cannot drift. See F12
+ * review (2026-08-20).
+ */
+export const MAX_CANVAS_DIM = 16384;
 
 /**
  * Cheap pre-parse element-count estimate. Counts `"id":` occurrences in

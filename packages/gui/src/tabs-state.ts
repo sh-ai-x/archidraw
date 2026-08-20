@@ -95,6 +95,12 @@ export function loadTabsState(): TabsState | null {
     // the same MAX_ELEMENTS / MAX_PARSE_DEPTH guards SceneIO uses
     // apply on hydration. A failing shape is replaced with an empty
     // scene (the local equivalent of SceneIO's user-facing alert).
+    // F11 review (2026-08-20): assertSceneShape already enforces
+    // object-shape + `elements` is an array + element-count +
+    // parse-depth. The cheap pre-check is redundant and was hand-rolled
+    // in three places (scene.ts loadScene, tabs-state.ts isValidScene,
+    // and assertSceneShape itself); assertSceneShape is the single
+    // source of truth.
     const cleaned = tabs.map(t => ({
       id: String(t.id),
       name: String(t.name ?? "Untitled"),
@@ -109,11 +115,9 @@ export function loadTabsState(): TabsState | null {
 function isValidScene(scene: unknown): scene is ExcalidrawScene {
   // A06-2 / A08-5 (2026-08-20): chain into assertSceneShape so the
   // MAX_ELEMENTS / MAX_PARSE_DEPTH guards apply on hydration, not
-  // just on file load. The cheap `type + elements array` check is
-  // preserved so a non-object (e.g. string, number) cannot crash
-  // assertSceneShape's structural walks.
-  if (!scene || typeof scene !== "object") return false;
-  const s = scene as ExcalidrawScene;
-  if (s.type !== "excalidraw" || !Array.isArray(s.elements)) return false;
-  return assertSceneShape(s).ok;
+  // just on file load.
+  // F11 review (2026-08-20): assertSceneShape already handles
+  // non-objects, arrays, missing `elements`, and element-count +
+  // parse-depth. The previous hand-rolled pre-check was redundant.
+  return assertSceneShape(scene).ok;
 }

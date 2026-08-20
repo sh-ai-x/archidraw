@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from "react";
 import type {Element} from "@archidraw/schema";
-import {clampCanvasBackingStore,makeElement,pointInElement,type SceneStore,type Tool} from "./scene";
+import {clampCanvasBackingStore,makeElement,MAX_CANVAS_DIM,pointInElement,type SceneStore,type Tool} from "./scene";
 import {renderScene} from "./Renderer";
 import {boundingBoxFromElements} from "./tabs-state";
 
@@ -23,9 +23,8 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
   const bbox=boundingBoxFromElements(elements);
   // A06 review: cap canvas size to prevent unbounded allocation if bbox is huge
   // (e.g. tampered localStorage with attacker-controllable coordinates).
-  const MAX_DIM = 16384;
-  const cssW=Math.min(Math.max(bbox.w,800), MAX_DIM);
-  const cssH=Math.min(Math.max(bbox.h,600), MAX_DIM);
+  const cssW=Math.min(Math.max(bbox.w,800), MAX_CANVAS_DIM);
+  const cssH=Math.min(Math.max(bbox.h,600), MAX_CANVAS_DIM);
 
   // 1. render whenever scene/zoom/pan/selection changes
   useEffect(()=>{
@@ -38,7 +37,7 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
       // the cap on the GPU allocation. See clampCanvasBackingStore for
       // the A06 backing-store DoS class this closes.
       const dpr = window.devicePixelRatio || 1;
-      const {w, h} = clampCanvasBackingStore({cssW, cssH, maxDim: MAX_DIM, dpr});
+      const {w, h} = clampCanvasBackingStore({cssW, cssH, maxDim: MAX_CANVAS_DIM, dpr});
       c.width=Math.round(w*dpr);
       c.height=Math.round(h*dpr);
       renderScene(c,elements,zoom,pan,selected,marquee,multiSel);
@@ -132,18 +131,44 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
         if(next!==null&&next.trim()!=="")store.updateElement(textHit.id,{text:next,originalText:next} as any);
         return;
       }
-      // Double-click on a shape → create a text element bound to that shape
-      // (Excalidraw-style "text inside rectangle"). The renderer's
-      // containerId branch wraps + flushes the text to the shape's bounds
-      // with no left padding, so the user types once and the text fills the
-      // shape evenly.
-      const shapeHit=[...elements].reverse().find(el=>(el.type==="rectangle"||el.type==="diamond"||el.type==="ellipse")&&pointInElement(el,p.x,p.y,0));
+      // Double-click on a shape → create or update a text element bound
+      // to that shape (Excalidraw-style "text inside rectangle"). The
+      // renderer's containerId branch wraps + flushes the text to the
+      // shape's bounds with no left padding, so the user types once
+      // and the text fills the shape evenly.
+      const shapeHit=[...elements].reverse().find(el=>(el.type==="rectangle"||el.type==="diamond"||el.type==="ellipse")&&pointInElement(el,p.x,p.y,8));
       if(shapeHit){
         const content=window.prompt("Text:",String((shapeHit as any).text||""));
         if(content===null)return;
         const id=(typeof crypto!=="undefined"&&typeof crypto.randomUUID==="function"
           ?crypto.randomUUID()
           :Math.random().toString(36).slice(2));
+        // F02 review (2026-08-20): re-double-clicking an already-text-bound
+        // shape must UPDATE the existing bound text, not create a fresh
+        // element. Without this, repeated double-clicks accumulated orphan
+        // text elements (each createElement pushes a new entry onto the
+        // scene). Filter for the existing bound text and route through
+        // updateElement when present.
+        // F03 review (2026-08-20): filter for non-text bindings to
+        // PRESERVE arrow / container bindings when writing back — the
+        // previous `b.type === "text"` filter silently severed the
+        // bidirectional binding contract.
+        // F06 review (2026-08-20): guard against malformed boundElements
+        // items (`[null]` / `[{}]` bypasses assertSceneShape's structural
+        // check). The `b && typeof b === "object"` predicate matches
+        // Excalidraw's own validator shape.
+        const curTextBound = (shapeHit.boundElements || []).find(
+          (b: any) => b && typeof b === "object" && b.type === "text"
+        );
+        if (curTextBound) {
+          store.updateElement(curTextBound.id, {text: content, originalText: content} as any);
+          setSelected(curTextBound.id);
+          setTool("select");
+          return;
+        }
+        const nonTextBound = (shapeHit.boundElements || []).filter(
+          (b: any) => b && typeof b === "object" && b.type !== "text"
+        );
         // Place the text element's own bounds at the shape's bounds so the
         // legacy non-container code path is a no-op fallback. The renderer
         // ignores these when containerId is set. Defaults are forced to
@@ -162,8 +187,7 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
           verticalAlign:"top",
         };
         // Mark the shape as having a bound text element (Excalidraw-style).
-        const curBound=(shapeHit.boundElements||[]).filter(b=>b.type==="text");
-        store.updateElement(shapeHit.id,{boundElements:[...curBound,{id,type:"text"}]});
+        store.updateElement(shapeHit.id,{boundElements:[...nonTextBound,{id,type:"text"}]});
         store.createElement(txt);
         setSelected(id);
         setTool("select");
@@ -218,7 +242,7 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
         // the middle of a shape created a standalone text element that
         // appeared at the click point (visually biased right inside the
         // shape's frame), which the user reports as "pushed right".
-        const shapeHit=[...elements].reverse().find(el=>(el.type==="rectangle"||el.type==="diamond"||el.type==="ellipse")&&pointInElement(el,p.x,p.y,0));
+        const shapeHit=[...elements].reverse().find(el=>(el.type==="rectangle"||el.type==="diamond"||el.type==="ellipse")&&pointInElement(el,p.x,p.y,8));
         if(shapeHit){
           const id=(typeof crypto!=="undefined"&&typeof crypto.randomUUID==="function"
             ?crypto.randomUUID()
@@ -234,8 +258,19 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
             textAlign:"left",
             verticalAlign:"top",
           };
-          const curBound=(shapeHit.boundElements||[]).filter(b=>b&&typeof b==="object"&&b.type==="text");
-          store.updateElement(shapeHit.id,{boundElements:[...curBound,{id,type:"text"}]});
+          const curTextBound = (shapeHit.boundElements || []).find(
+            (b: any) => b && typeof b === "object" && b.type === "text"
+          );
+          if (curTextBound) {
+            store.updateElement(curTextBound.id, {text: content, originalText: content} as any);
+            setSelected(curTextBound.id);
+            setTool("select");
+            return;
+          }
+          const nonTextBound = (shapeHit.boundElements || []).filter(
+            (b: any) => b && typeof b === "object" && b.type !== "text"
+          );
+          store.updateElement(shapeHit.id,{boundElements:[...nonTextBound,{id,type:"text"}]});
           store.createElement(txt);
           setSelected(id);
           setTool("select");
