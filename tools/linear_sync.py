@@ -173,8 +173,14 @@ def _load_env_file(repo: Path) -> None:
         if not key.startswith(_LINEAR_KEY_PREFIX):
             continue
         os.environ[key] = value
-    # Per-worktree fallback. No filter — the file is Linear-only by convention.
+    # Per-worktree fallback. A07-2 (2026-08-19): filter to LINEAR_* only.
+    # The "Linear-only by convention" note in the docstring was the
+    # trap — a user copying a generic .env into .env.linear silently
+    # promoted GH_TOKEN/OPENAI_API_KEY/... into the Linear subprocess
+    # env. Filter to the same prefix the user-scope loop uses.
     for key, value in _read_env_file_lines(repo / _ENV_FILE_REL):
+        if not key.startswith(_LINEAR_KEY_PREFIX):
+            continue
         if key in os.environ:
             continue
         os.environ[key] = value

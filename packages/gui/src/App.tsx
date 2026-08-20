@@ -21,12 +21,16 @@ export function App(){
     seededRef.current=true;
     const els=store.getScene().elements;
     if(!els.length)return;
-    void import("./LayoutPanel").then(({silentAutoFix})=>{
-      const fixed=silentAutoFix(els);
-      if(fixed===els)return;
-      for(const e of store.queryElements({includeDeleted:true}))store.deleteElement(e.id);
-      for(const v of fixed)store.createElement(v);
-    });
+    void import("./LayoutPanel")
+      .then(({silentAutoFix})=>{
+        const fixed=silentAutoFix(els);
+        if(fixed===els)return;
+        for(const e of store.queryElements({includeDeleted:true}))store.deleteElement(e.id);
+        for(const v of fixed)store.createElement(v);
+      })
+      // A10-1 (2026-08-19): surface dynamic-import failure rather than
+      // leaving a stale store when the chunk is missing or threw.
+      .catch((err)=>{console.error("[App] silentAutoFix bootstrap failed", err);});
   },[store]);
   const [tool,setTool]=useState<Tool>("select");
   const [showHelp,setShowHelp]=useState(false);
