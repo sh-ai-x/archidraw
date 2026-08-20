@@ -52,11 +52,14 @@ export function LayoutPanel({ store }: { store: SceneStore }) {
   );
 }
 
-function countIssues(els: Array<{ isDeleted?: boolean; type: string; x: number; y: number; width?: number; height?: number; id: string; text?: string; fontSize?: number }>): number {
+function countIssues(els: Array<{ isDeleted?: boolean; type: string; x: number; y: number; width?: number; height?: number; id: string; text?: string; fontSize?: number; containerId?: string | null }>): number {
   const ctx = document.createElement("canvas").getContext("2d")!;
   let n = 0;
   for (const e of els) {
     if (e.isDeleted || e.type !== "text") continue;
+    // Container-bound text wraps inside the container's bbox — never counts
+    // as overflow even when its rendered width exceeds its own (cosmetic) width.
+    if (e.containerId) continue;
     ctx.font = `${e.fontSize || 12}px Inter, ui-sans-serif, system-ui, sans-serif`;
     if (ctx.measureText(e.text || "").width > (e.width || 0) + 4) n++;
   }
@@ -81,7 +84,7 @@ function countIssues(els: Array<{ isDeleted?: boolean; type: string; x: number; 
   return n;
 }
 
-export function silentAutoFix(elsIn: Array<{ isDeleted?: boolean; type: string; x: number; y: number; width?: number; height?: number; id: string; text?: string; fontSize?: number }>): Array<{ isDeleted?: boolean; type: string; x: number; y: number; width?: number; height?: number; id: string; text?: string; fontSize?: number }> {
+export function silentAutoFix(elsIn: Array<{ isDeleted?: boolean; type: string; x: number; y: number; width?: number; height?: number; id: string; text?: string; fontSize?: number; containerId?: string | null }>): Array<{ isDeleted?: boolean; type: string; x: number; y: number; width?: number; height?: number; id: string; text?: string; fontSize?: number; containerId?: string | null }> {
   const els = elsIn.map(e => ({...e}));
   const ctx = document.createElement("canvas").getContext("2d")!;
 
@@ -89,6 +92,19 @@ export function silentAutoFix(elsIn: Array<{ isDeleted?: boolean; type: string; 
   // rectangle (whose center contains this text's center) to contain the text.
   for (const e of els) {
     if (e.isDeleted || e.type !== "text" || !e.text) continue;
+    if (e.containerId) {
+      // Container text: grow HEIGHT only (no width, no parent resize).
+      ctx.font = `${e.fontSize || 12}px Inter, ui-sans-serif, system-ui, sans-serif`;
+      const measured = ctx.measureText(e.text).width;
+      if (measured > (e.width || 0) + 2) {
+        const lineH = (e.fontSize || 12) * 1.25;
+        const charW = Math.max(1, ctx.measureText("M").width);
+        const charsPerLine = Math.max(1, Math.floor((e.width || 80) / charW));
+        const lines = Math.max(1, Math.ceil(e.text.length / charsPerLine));
+        e.height = Math.ceil(lineH * lines);
+      }
+      continue;
+    }
     ctx.font = `${e.fontSize || 12}px Inter, ui-sans-serif, system-ui, sans-serif`;
     const measured = ctx.measureText(e.text).width;
     if (measured > (e.width || 0) + 2) {
@@ -132,6 +148,10 @@ export function silentAutoFix(elsIn: Array<{ isDeleted?: boolean; type: string; 
     if (allFit) break;
     for (const e of els) {
       if (e.isDeleted || e.type !== "text" || !e.text) continue;
+      if (e.containerId) {
+        // Container text: never resize width; the text wraps inside the container.
+        continue;
+      }
       ctx.font = `${e.fontSize || 12}px Inter, ui-sans-serif, system-ui, sans-serif`;
       const measured = ctx.measureText(e.text).width;
       if (measured > (e.width || 0) + 2) {

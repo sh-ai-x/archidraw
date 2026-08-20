@@ -8,6 +8,22 @@ type ResizeHandle = "nw"|"ne"|"sw"|"se";
 const MIN_SIZE = 4;
 const HANDLE_PX = 8;
 
+interface TextEditor {
+  textId: string;
+  /** Initial text value (empty when the bound text was just created). */
+  value: string;
+  /** Screen-space rect (CSS px relative to the canvas top-left). */
+  rect: {left:number; top:number; width:number; height:number};
+  fontSize: number;
+  color: string;
+  /** Shape's fill — the textarea background so it visually matches. */
+  fillColor: string;
+  /** True when the editor was opened over an existing text that already had
+   * non-empty content; false when it was just spawned on a fresh shape. The
+   * Escape path only deletes a text the editor itself just created. */
+  isFreshlyCreated: boolean;
+}
+
 export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:(tool:Tool)=>void}){
   const ref=useRef<HTMLCanvasElement>(null);
   const [zoom,setZoom]=useState(1);
@@ -16,6 +32,7 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
   const [hovering,setHovering]=useState(false);
   const [marquee,setMarquee]=useState<{x1:number;y1:number;x2:number;y2:number}|null>(null);
   const [multiSel,setMultiSel]=useState<string[]>([]);
+  const [editor,setEditor]=useState<TextEditor|null>(null);
   const drag=useRef<{x:number;y:number;id?:string;start?:Element;space?:boolean;gesture:"none"|"drag-element"|"resize";handle?:ResizeHandle}|null>(null);
   const pointerDownPos=useRef<{x:number;y:number;hit:Element|null}|null>(null);
   const DRAGGING_THRESHOLD=3;
@@ -116,7 +133,51 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
     return null;
   };
 
-  return <canvas
+  // Helper: given a container shape, find or create the text element bound to it.
+  const ensureBoundText=(shape:Element):{text:Element; isFresh:boolean}=>{
+    const existing=elements.find(x=>x.type==="text"&&(x as any).containerId===shape.id);
+    if(existing) return {text:existing, isFresh:false};
+    const txt=makeElement("text",shape.x,shape.y,80,28,Date.now(),{containerId:shape.id,text:""});
+    store.createContainerTextPair(shape,txt);
+    return {text:txt, isFresh:true};
+  };
+
+  // Helper: strip a text id from a container's boundElements array.
+  const detachBoundText=(containerId:string, textId:string)=>{
+    const c=elements.find(x=>x.id===containerId);
+    if(!c||!c.boundElements) return;
+    const filtered=c.boundElements.filter(b=>b.id!==textId);
+    store.updateElement(containerId,{boundElements:filtered.length?filtered:null} as any);
+  };
+
+  // Commit the open editor. Empty value deletes the text + clears the bound entry.
+  const commitEditor=()=>{
+    if(!editor) return;
+    const trimmed=editor.value;
+    const txt=elements.find(x=>x.id===editor.textId);
+    const cid=txt?(txt as any).containerId as string|null:null;
+    if(trimmed.trim()===""){
+      if(cid) detachBoundText(cid, editor.textId);
+      store.deleteElement(editor.textId);
+    } else {
+      store.updateElement(editor.textId,{text:trimmed,originalText:trimmed} as any);
+    }
+    setEditor(null);
+  };
+
+  // Cancel: discard edits. If we just spawned a fresh empty text, drop it.
+  const cancelEditor=()=>{
+    if(editor&&editor.isFreshlyCreated){
+      const txt=elements.find(x=>x.id===editor.textId);
+      const cid=txt?(txt as any).containerId as string|null:null;
+      if(cid) detachBoundText(cid, editor.textId);
+      store.deleteElement(editor.textId);
+    }
+    setEditor(null);
+  };
+
+  return <div className="canvas-overlay-wrap" style={{position:"relative",width:cssW+"px",height:cssH+"px"}}>
+  <canvas
     ref={ref}
     data-testid="canvas"
     width={Math.round(cssW*devicePixelRatio)}
@@ -126,11 +187,40 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
     onDoubleClick={e=>{
       const p=world(e as unknown as React.PointerEvent);
       if(tool!=="select")return;
-      const hit=[...elements].reverse().find(el=>el.type==="text"&&pointInElement(el,p.x,p.y,8));
-      if(hit){
-        const next=window.prompt("Edit text:",String((hit as any).text||""));
-        if(next!==null&&next.trim()!=="")store.updateElement(hit.id,{text:next,originalText:next} as any);
-      }
+      const hit=[...elements].reverse().find(el=>pointInElement(el,p.x,p.y,8));
+      if(!hit) return;
+      // Decide the editor target:
+      //   * clicking an existing free-floating text → re-edit it
+      //   * clicking a shape → open (or create) the bound text editor
+      let textId:string;
+      let editorRectShape:Element;
+      let isFresh=false;
+      if(hit.type==="text"){
+        const cid=(hit as any).containerId as string|null;
+        const container=cid?elements.find(x=>x.id===cid):null;
+        textId = hit.id;
+        editorRectShape = container ?? hit;
+      } else if(hit.type==="rectangle"||hit.type==="ellipse"||hit.type==="diamond"){
+        const bound=ensureBoundText(hit);
+        textId = bound.text.id;
+        editorRectShape = hit;
+        isFresh = bound.isFresh;
+      } else return;
+      const txt=elements.find(x=>x.id===textId) ?? hit;
+      setEditor({
+        textId,
+        value:String((txt as any).text||""),
+        rect:{
+          left:editorRectShape.x*zoom+pan.x,
+          top:editorRectShape.y*zoom+pan.y,
+          width:editorRectShape.width*zoom,
+          height:editorRectShape.height*zoom,
+        },
+        fontSize:((txt as any).fontSize||20)*zoom,
+        color:(txt as any).strokeColor||"#0f172a",
+        fillColor:(editorRectShape as any).backgroundColor||"transparent",
+        isFreshlyCreated:isFresh,
+      });
     }}
     onWheel={e=>{
       if(e.ctrlKey||e.metaKey){
@@ -273,5 +363,28 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
       }
       drag.current=null;pointerDownPos.current=null;
     }}
-  />;
+  />
+  {editor && <textarea
+    data-testid="text-editor"
+    autoFocus
+    value={editor.value}
+    onChange={e=>setEditor({...editor,value:e.target.value})}
+    onBlur={commitEditor}
+    onKeyDown={e=>{
+      if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();commitEditor()}
+      else if(e.key==="Escape"){e.preventDefault();cancelEditor()}
+    }}
+    className="text-editor-overlay"
+    style={{
+      position:"absolute",
+      left:editor.rect.left+"px",
+      top:editor.rect.top+"px",
+      width:editor.rect.width+"px",
+      height:editor.rect.height+"px",
+      fontSize:editor.fontSize+"px",
+      color:editor.color,
+      background:editor.fillColor==="transparent"?"rgba(255,255,255,0.95)":editor.fillColor,
+    }}
+  />}
+  </div>;
 }

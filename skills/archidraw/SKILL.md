@@ -70,7 +70,7 @@ The renderer honors `textAlign` and `verticalAlign` literally — sending
 with the fill, the icon, and the stroke. **Always place text BELOW or BESIDE
 the shape it labels**, not centered on it.
 
-Concretely, every text element MUST satisfy one of these:
+Concretely, every agent-published text element MUST satisfy one of these:
 
 | Position | x / width | y / height | textAlign | verticalAlign |
 |---|---|---|---|---|
@@ -80,6 +80,33 @@ Concretely, every text element MUST satisfy one of these:
 
 The shape's own interior is reserved for icons / color cues. The shape never
 carries its own name as overlay text.
+
+**Exception — in-place container text.** When a human user double-clicks a
+shape in the GUI, the GUI creates a `text` element with `containerId` set to
+the shape's id and the shape's `boundElements` populated with
+`{id, type:"text"}`. The renderer centers that text inside the shape and
+clips horizontal overflow; LayoutPanel's Auto-Fix grows the text's HEIGHT
+(wrapping) instead of resizing the container. Agents publishing a fully-formed
+diagram should still default to captions. Container text exists for
+hand-drawn diagrams only — the canonical recipe is below.
+
+When publishing a container-bound pair, the text element MUST set
+`containerId` to the shape id, and the shape MUST add an entry to its
+`boundElements` array:
+
+```json
+[
+  {"id":"r1","type":"rectangle","x":100,"y":100,"width":200,"height":100,
+   "boundElements":[{"id":"t1","type":"text"}], ...},
+  {"id":"t1","type":"text","x":0,"y":0,"width":80,"height":28,
+   "containerId":"r1","text":"Hello","textAlign":"center",
+   "verticalAlign":"middle", ...}
+]
+```
+
+The renderer positions the text at the container's geometric center
+regardless of the text element's own `x/y/width/height` — those fields are
+cosmetic when `containerId` is set.
 
 ### 2. Shapes have meaningful geometry
 
@@ -187,6 +214,27 @@ Three rules this example enforces (so it doesn't regress):
    starts at right edge of `r1`, ends at left edge of `r2`.
 3. **No text is centered on any shape interior** — every text element is
    either the canvas title or a shape caption beneath its shape.
+
+## In-place text editing (interactive)
+
+For hand-drawn diagrams, the GUI supports Excalidraw-style in-place text
+editing on any shape (rectangle, ellipse, diamond). This is independent of
+the agent-published composition rules above — those still apply when a script
+pushes a complete diagram via the bridge.
+
+| Action | Effect |
+|---|---|
+| Double-click a shape (Select tool) | Opens a `<textarea>` overlay over the shape. If no bound text exists, one is created with `containerId` = shape id. |
+| Double-click a shape that already has bound text | Opens the editor pre-filled with the existing text. |
+| Double-click a free-floating text element | Opens the editor pre-filled with that text (legacy `window.prompt` editor was removed). |
+| Type, then `Enter` | Commits the text. Empty commit deletes the bound text + clears the shape's `boundElements` entry. |
+| `Escape` | Discards. If the editor just spawned a fresh empty text, the text + bound entry are dropped. |
+| Click outside (blur) | Same as Enter. |
+
+The editor preserves the shape's stroke / fill colors and centers the text
+inside the shape. Width is fixed (= shape's interior width); HEIGHT grows to
+accommodate wrapping. Auto-Fix respects this — it never resizes the shape
+when the bound text overflows.
 
 ## Tabs API (localStorage)
 
