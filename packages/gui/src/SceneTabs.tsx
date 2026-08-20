@@ -1,90 +1,30 @@
-import {forwardRef, useEffect, useImperativeHandle, useRef, useState, type JSX} from "react";
+import {useEffect, useRef, useState, type JSX} from "react";
 import type {Element} from "@archidraw/schema";
 import type {SceneStore} from "./scene";
-import {
-  createTabsState,
-  loadTabsState,
-  saveTabsState,
-  type Tab,
-  type TabsState,
-} from "./tabs-state";
+import {tabsStore, useTabsStore, type Tab} from "./tabs-state";
 
 interface SceneTabsProps {
   store: SceneStore;
   /** Monotonically increasing on every store mutation (from App.tsx via store.onChange). */
   sceneVersion: number;
   /** Called whenever the active tab changes; the parent should swap the store's contents to match. */
-  onActiveChange: (active: TabsState) => void;
+  onActiveChange: (active: {tabs: Tab[]; activeTabId: string | null}) => void;
   /** Where to render the inner Save/Load buttons next to the tabs. */
   rightSlot?: React.ReactNode;
 }
 
-/** Imperative handle exposed to parents via the forwarded ref. */
-export interface SceneTabsHandle {
-  /**
-   * Create a new tab from the given elements and switch to it. Bypasses
-   * `localStorage` — all tab-state mutations stay inside React so the
-   * component's own debounced persist can't overwrite the new tab.
-   * PR #48 review (2026-08-20, 🔴 critical #2): the previous
-   * App.handleLoadAsTab wrote `archidraw:tabs` directly, which
-   * SceneTabs's 300ms debounced persist then overwrote on the next
-   * tick, dropping the loaded tab.
-   */
-  createTab: (name: string, elements: Element[]) => void;
-}
-
-const PERSIST_DEBOUNCE_MS = 300;
-
 /**
- * Multi-scene tab strip. Manages a list of named scenes backed by `localStorage`,
- * swap-tab behavior (rewriting the store contents when the active tab changes),
- * inline rename, and per-tab delete with a non-empty confirmation.
+ * Multi-scene tab strip. Reads tab state from `tabsStore` (F09 review,
+ * 2026-08-20) instead of owning local React state. App.tsx can now
+ * call `tabsStore.createTab(name, elements)` directly — no forwarded
+ * ref + useImperativeHandle dance.
  */
-export const SceneTabs = forwardRef<SceneTabsHandle, SceneTabsProps>(function SceneTabs({store, sceneVersion, onActiveChange, rightSlot}, ref): JSX.Element {
-  const [state, setState] = useState<TabsState>(() => {
-    const loaded = loadTabsState();
-    if (loaded) return loaded;
-    return createTabsState("Untitled");
-  });
-
+export function SceneTabs({store, sceneVersion, onActiveChange, rightSlot}: SceneTabsProps): JSX.Element {
+  const state = useTabsStore(s => s);
   const [editing, setEditing] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
   const lastEmittedTabId = useRef<string | null>(null);
   const lastSavedVersion = useRef<number>(-1);
-
-  // Expose createTab so App.handleLoadAsTab can route through this
-  // component's own state instead of writing localStorage directly
-  // (PR #48 review, 2026-08-20).
-  useImperativeHandle(ref, () => ({
-    createTab: (name, elements) => {
-      const id = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : Math.random().toString(36).slice(2) + Date.now().toString(36));
-      const tab: Tab = {
-        id,
-        name,
-        scene: {
-          type: "excalidraw",
-          version: 2,
-          source: "archidraw",
-          elements: structuredClone(elements),
-          appState: {},
-          files: {},
-        },
-      };
-      setState(s => ({ tabs: [...s.tabs, tab], activeTabId: id }));
-    },
-  }), []);
-
-  // Persist on a 300ms debounce.
-  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (persistTimer.current) clearTimeout(persistTimer.current);
-    persistTimer.current = setTimeout(() => saveTabsState(state), PERSIST_DEBOUNCE_MS);
-    return () => {
-      if (persistTimer.current) clearTimeout(persistTimer.current);
-    };
-  }, [state]);
 
   // First-run only: copy current scene into the starter tab so the empty
   // tab is hydrated with whatever was already in the localStorage scene.
@@ -92,13 +32,7 @@ export const SceneTabs = forwardRef<SceneTabsHandle, SceneTabsProps>(function Sc
   useEffect(() => {
     if (seededRef.current) return;
     seededRef.current = true;
-    setState(s => {
-      const idx = s.tabs.findIndex(t => t.id === s.activeTabId);
-      if (idx < 0) return s;
-      const tabs = s.tabs.slice();
-      tabs[idx] = { ...tabs[idx], scene: structuredClone(store.getScene()) };
-      return { ...s, tabs };
-    });
+    tabsStore.snapshotActiveTab(store.getScene());
     lastSavedVersion.current = sceneVersion;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -109,14 +43,7 @@ export const SceneTabs = forwardRef<SceneTabsHandle, SceneTabsProps>(function Sc
   useEffect(() => {
     if (lastSavedVersion.current === sceneVersion) return;
     lastSavedVersion.current = sceneVersion;
-    const currentScene = store.getScene();
-    setState(s => {
-      const idx = s.tabs.findIndex(t => t.id === s.activeTabId);
-      if (idx < 0) return s;
-      const nextTabs = s.tabs.slice();
-      nextTabs[idx] = { ...nextTabs[idx], scene: structuredClone(currentScene) };
-      return { ...s, tabs: nextTabs };
-    });
+    tabsStore.snapshotActiveTab(store.getScene());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sceneVersion]);
 
@@ -127,17 +54,16 @@ export const SceneTabs = forwardRef<SceneTabsHandle, SceneTabsProps>(function Sc
     const active = state.tabs.find(t => t.id === activeId);
     if (active) {
       lastEmittedTabId.current = activeId;
-      onActiveChange({ tabs: state.tabs, activeTabId: activeId });
+      onActiveChange({tabs: state.tabs, activeTabId: activeId});
     }
   }, [state.activeTabId, state.tabs, onActiveChange]);
 
   const handleNew = () => {
-    setState(s => createTabsState("Untitled", s));
+    tabsStore.newTab();
   };
 
   const handleSelect = (id: string) => {
-    if (id === state.activeTabId) return;
-    setState(s => ({ ...s, activeTabId: id }));
+    tabsStore.setActiveTab(id);
   };
 
   const handleStartRename = (tab: Tab) => {
@@ -149,10 +75,7 @@ export const SceneTabs = forwardRef<SceneTabsHandle, SceneTabsProps>(function Sc
     const next = draftName.trim();
     setEditing(null);
     if (!next || next === tab.name) return;
-    setState(s => ({
-      ...s,
-      tabs: s.tabs.map(t => t.id === tab.id ? { ...t, name: next } : t),
-    }));
+    tabsStore.renameTab(tab.id, next);
   };
 
   const handleCancelRename = () => {
@@ -165,17 +88,7 @@ export const SceneTabs = forwardRef<SceneTabsHandle, SceneTabsProps>(function Sc
     if (hasContent && !window.confirm(`Delete tab "${tab.name}"? This will discard its elements.`)) {
       return;
     }
-    setState(s => {
-      const idx = s.tabs.findIndex(t => t.id === tab.id);
-      if (idx < 0) return s;
-      const nextTabs = s.tabs.filter(t => t.id !== tab.id);
-      if (!nextTabs.length) return s;
-      let nextActive = s.activeTabId;
-      if (s.activeTabId === tab.id) {
-        nextActive = nextTabs[Math.max(0, idx - 1)].id;
-      }
-      return { tabs: nextTabs, activeTabId: nextActive };
-    });
+    tabsStore.deleteTab(tab.id);
   };
 
   return (
@@ -221,4 +134,4 @@ export const SceneTabs = forwardRef<SceneTabsHandle, SceneTabsProps>(function Sc
       {rightSlot && <div className="scene-tabs-right">{rightSlot}</div>}
     </div>
   );
-});
+}

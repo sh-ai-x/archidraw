@@ -4,7 +4,8 @@ import {Toolbar} from "./Toolbar";
 import {HelpModal} from "./HelpModal";
 import {createMemoryStore,type Tool} from "./scene";
 import {subscribeToSceneDeltas} from "./bridge-client";
-import {SceneTabs, type SceneTabsHandle} from "./SceneTabs";
+import {SceneTabs} from "./SceneTabs";
+import {tabsStore} from "./tabs-state";
 import {SceneIO} from "./SceneIO";
 import {LayoutPanel} from "./LayoutPanel";
 import {SnapshotPanel} from "./SnapshotPanel";
@@ -34,9 +35,6 @@ export function App(){
   },[store]);
   const [tool,setTool]=useState<Tool>("select");
   const [showHelp,setShowHelp]=useState(false);
-  // Forwarded handle to SceneTabs so handleLoadAsTab can route through
-  // its own state instead of bypassing it via localStorage. PR #48.
-  const tabsRef = useRef<SceneTabsHandle | null>(null);
 
   // ? key + Shift+/ toggles help modal
   useEffect(()=>{
@@ -101,27 +99,16 @@ export function App(){
     for (const el of next) store.createElement(structuredClone(el));
   };
 
-  // Called by SceneIO when loading a file as a new tab.
-  // PR #48 review (2026-08-20, 🔴 critical #2): the previous version
-  // wrote `archidraw:tabs` and `archidraw:activeTab` to localStorage
-  // directly, but SceneTabs has its own debounced persist that
-  // overwrote the new tab on the next tick — the loaded tab never
-  // appeared. Route through SceneTabs's forwarded createTab handle so
-  // the new tab lives in the same React state the rest of the UI
-  // reads from.
-  // A10-1 review (2026-08-20): if tabsRef.current is null (unmount,
-  // ref-stale, lazy Suspense delay) the previous version silently
-  // degraded to an in-place overwrite of the current scene. Gate the
-  // store mutation on createTab actually running.
+  // F09 review (2026-08-20): tabs state lives in `tabsStore` (a
+  // module-level store with subscribe/getState + actions). App calls
+  // `tabsStore.createTab(name, elements)` directly — no forwarded ref,
+  // no useImperativeHandle, no null-guard dance on tabsRef.
+  // F10 / A10-1 follow-up: handleLoadAsTab previously alerted + bailed
+  // when tabsRef.current was null (unmount / Suspense delay). With the
+  // store, createTab is synchronous and never null — the alert path is
+  // dead code and is removed.
   const handleLoadAsTab = (name: string, elements: Element[]) => {
-    if (!tabsRef.current) {
-      // A10-1: surface the failure instead of silently overwriting
-      // the current scene. The operator can retry once SceneTabs has
-      // mounted.
-      window.alert("Tab panel not ready yet — try again in a moment.");
-      return;
-    }
-    tabsRef.current.createTab(name, elements);
+    tabsStore.createTab(name, elements);
     // Mirror the new scene into the store so the canvas shows it
     // immediately. SceneTabs's auto-save effect (driven by
     // sceneVersion) will then persist the active tab on the next
@@ -136,7 +123,6 @@ export function App(){
     <Toolbar active={tool} onChange={setTool}/>
     <div className="canvas-area">
       <SceneTabs
-        ref={tabsRef}
         store={store}
         sceneVersion={sceneVersion}
         onActiveChange={handleTabActiveChange}
