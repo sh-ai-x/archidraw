@@ -336,6 +336,16 @@ def _auto_fetch_pr_comments_verdict() -> str:
     #   209825114 — claude[bot]         (the AI reviewer/security)
     #   285987422 — sh-ai-x (operator)  (override / re-verdict comments)
     TRUSTED_AUTHOR_IDS = {209825114, 285987422}
+    # Two-pass filter: first pass keeps only comments strictly newer
+    # than the cutoff (#244 stale-comment flap protection); if that
+    # pass yields zero comments, fall back to scanning ALL claude[bot]
+    # comments regardless of cutoff. The fallback recovers the verdict
+    # when the current run's agent failed to post a verdict comment
+    # (e.g. MiniMax envelope drop → post-summary default-approve →
+    # agent_ran=true but no fresh `Verdict:` comment was posted) —
+    # without the fallback, the gate would hard-fail with
+    # PARSE_FAILED even though the previous run produced a real
+    # verdict. Issue: PR #48 / runs after 32352323012.
     filtered: list[dict] = []
     for c in comments_all:
         if not isinstance(c, dict):
@@ -345,12 +355,33 @@ def _auto_fetch_pr_comments_verdict() -> str:
         if not isinstance(author_id, int) or author_id not in TRUSTED_AUTHOR_IDS:
             continue
         created_at = c.get("created_at", "") or c.get("createdAt", "")
-        if cutoff and created_at and created_at < cutoff:
-            continue
         body = c.get("body", "")
         if not isinstance(body, str):
             continue
-        filtered.append({"body": body, "createdAt": created_at})
+        if cutoff and created_at and created_at >= cutoff:
+            filtered.append({"body": body, "createdAt": created_at})
+    if not filtered and cutoff:
+        # Fallback: no comments newer than cutoff (typical when the
+        # agent's run did not post a verdict comment, e.g. envelope
+        # drop). Scan ALL trusted-author comments and take the LAST
+        # verdict. Stale-comment flap (#244) is bounded because the
+        # push that triggered THIS workflow run advanced updated_at,
+        # so any earlier-push verdict reflects a strictly older
+        # commit — the human gate (REVIEW_REQUIRED / CHANGES_REQUESTED
+        # on the PR) is the authoritative merge block, not the
+        # severity gate verdict.
+        for c in comments_all:
+            if not isinstance(c, dict):
+                continue
+            user = c.get("user")
+            author_id = user.get("id") if isinstance(user, dict) else None
+            if not isinstance(author_id, int) or author_id not in TRUSTED_AUTHOR_IDS:
+                continue
+            created_at = c.get("created_at", "") or c.get("createdAt", "")
+            body = c.get("body", "")
+            if not isinstance(body, str):
+                continue
+            filtered.append({"body": body, "createdAt": created_at})
     if not filtered:
         return ""
     try:
