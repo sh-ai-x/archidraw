@@ -10,6 +10,27 @@ export const pointInElement=(element:Element,x:number,y:number,tolerance=8)=>{co
 export const makeElement=(type:Exclude<Tool,"select"|"erase">,x:number,y:number,w:number,h:number,seed=Date.now()):Element=>{const base={id:crypto.randomUUID(),type,x,y,width:w,height:h,angle:0,strokeColor:"#1f2937",backgroundColor:"transparent",fillStyle:"solid",strokeWidth:2,strokeStyle:"solid",roughness:1,opacity:100,groupIds:null,frameId:null,index:null,roundness:null,seed,versionNonce:seed,isDeleted:false,boundElements:null,updated:Date.now(),link:null,locked:false} as const;if(type==="arrow"||type==="line")return {...base,type,points:[[0,0],[w,h]],startBinding:null,endBinding:null,startArrowhead:type==="arrow"?null:null,endArrowhead:type==="arrow"?"arrow":null} as Element;if(type==="text")return {...base,type,width:Math.max(w,80),height:28,fontSize:20,fontFamily:1,text:"Text",textAlign:"left",verticalAlign:"top",containerId:null,originalText:"Text",lineHeight:1.2,baseline:20} as Element;return {...base,type} as Element};
 
 /**
+ * Shape-label helpers — the text payload rides directly on the shape
+ * element (no separate bound TextElement). getShapeText returns "" for
+ * missing OR whitespace-only text so the renderer can early-out
+ * uniformly; setShapeText clears the label when the input is empty.
+ */
+export const getShapeText = (el: Element): string => {
+  const t = (el as any).text;
+  return typeof t === "string" && t.trim() !== "" ? t : "";
+};
+
+export const setShapeText = (el: Element, text: string): ElementPatch => {
+  // Trim the value before storing to match the text-element branch's
+  // first-hit behavior and to keep empty-input a true "clear" signal.
+  const trimmed = typeof text === "string" ? text.trim() : "";
+  return { text: trimmed, originalText: trimmed };
+};
+
+export const isShapeElement = (el: Element): boolean =>
+  el.type === "rectangle" || el.type === "ellipse" || el.type === "diamond";
+
+/**
  * Cap the BACKING STORE (cssW*dpr) of a Canvas to `maxDim` pixels on the
  * longest axis, regardless of `devicePixelRatio`. Pre-fix the 16384-cap was
  * applied to the CSS dim alone; on a 3x-DPR display the GPU backing-store

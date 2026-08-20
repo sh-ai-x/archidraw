@@ -63,9 +63,15 @@ export interface ElementBase {
   locked: boolean;
 }
 
-export interface RectangleElement extends ElementBase { type: "rectangle" }
-export interface EllipseElement extends ElementBase { type: "ellipse" }
-export interface DiamondElement extends ElementBase { type: "diamond" }
+export interface ShapeLabel {
+  text?: string;
+  originalText?: string;
+  fontSize?: number;
+}
+
+export interface RectangleElement extends ElementBase, ShapeLabel { type: "rectangle" }
+export interface EllipseElement extends ElementBase, ShapeLabel { type: "ellipse" }
+export interface DiamondElement extends ElementBase, ShapeLabel { type: "diamond" }
 export interface LineElement extends ElementBase { type: "line"; points: Point[] }
 export interface GroupElement extends ElementBase { type: "group" }
 

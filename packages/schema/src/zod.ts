@@ -23,10 +23,26 @@ const elementBase = z.object({
   boundElements: z.array(boundElement).nullable(), updated: z.number(), link: z.string().nullable(), locked: z.boolean(),
 }).passthrough();
 
+// Optional label fields that ride along on shape elements. Marked
+// `.optional()` so the three shape variants can opt in without
+// affecting the existing `.passthrough()` round-trip — old scenes that
+// predate the label feature still parse because `passthrough` keeps
+// unknown keys and `optional()` lets the new keys be absent.
+const shapeLabel = z.object({
+  text: z.string().optional(),
+  originalText: z.string().optional(),
+  fontSize: z.number().optional(),
+}).passthrough();
+
+// Spread shapeLabel.shape into each shape variant's extend() so the
+// discriminatedUnion keeps a uniform ZodObject per arm. `.and()` would
+// yield a ZodIntersection which discriminatedUnion rejects.
+const shapeLabelShape = shapeLabel.shape;
+
 export const ExcalidrawElementSchema = z.discriminatedUnion("type", [
-  elementBase.extend({ type: z.literal("rectangle") }),
-  elementBase.extend({ type: z.literal("ellipse") }),
-  elementBase.extend({ type: z.literal("diamond") }),
+  elementBase.extend({ type: z.literal("rectangle"), ...shapeLabelShape }),
+  elementBase.extend({ type: z.literal("ellipse"), ...shapeLabelShape }),
+  elementBase.extend({ type: z.literal("diamond"), ...shapeLabelShape }),
   elementBase.extend({ type: z.literal("group") }),
   elementBase.extend({ type: z.literal("line"), points: z.array(point) }),
   elementBase.extend({ type: z.literal("arrow"), points: z.array(point), startBinding: binding.nullable(), endBinding: binding.nullable(), startArrowhead: z.enum(["arrow", "bar", "dot", "triangle"]).nullable(), endArrowhead: z.enum(["arrow", "bar", "dot", "triangle"]).nullable() }),

@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from "react";
 import type {Element} from "@archidraw/schema";
-import {clampCanvasBackingStore,makeElement,pointInElement,type SceneStore,type Tool} from "./scene";
+import {clampCanvasBackingStore,isShapeElement,makeElement,pointInElement,setShapeText,type SceneStore,type Tool} from "./scene";
 import {renderScene} from "./Renderer";
 import {boundingBoxFromElements} from "./tabs-state";
 
@@ -126,10 +126,25 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
     onDoubleClick={e=>{
       const p=world(e as unknown as React.PointerEvent);
       if(tool!=="select")return;
-      const hit=[...elements].reverse().find(el=>el.type==="text"&&pointInElement(el,p.x,p.y,8));
-      if(hit){
-        const next=window.prompt("Edit text:",String((hit as any).text||""));
-        if(next!==null&&next.trim()!=="")store.updateElement(hit.id,{text:next,originalText:next} as any);
+      // Generalized: text OR any shape carries its own label. The shape
+      // path uses setShapeText so empty input clears; the text path
+      // uses the same empty-clears semantics (see fix below).
+      const hit=[...elements].reverse().find(el=>{
+        if(el.type==="text"||isShapeElement(el))return pointInElement(el,p.x,p.y,8);
+        return false;
+      });
+      if(!hit)return;
+      const currentText=String((hit as any).text||"");
+      const next=window.prompt("Edit text:",currentText);
+      // Bug fix: empty/whitespace input must clear the label, not just
+      // be ignored. Cancel (null) remains a no-op. The previous text-only
+      // branch silently preserved stale text on empty input — that is
+      // the exact bug this change closes.
+      if(next===null)return;
+      if(isShapeElement(hit)){
+        store.updateElement(hit.id,setShapeText(hit,next) as any);
+      } else {
+        store.updateElement(hit.id,{text:next,originalText:next} as any);
       }
     }}
     onWheel={e=>{
@@ -221,8 +236,7 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
       const p=pHover;
       const d={x:p.x-drag.current.x,y:p.y-drag.current.y};
       if(drag.current.space){
-        const wrap=ref.current?.parentElement;
-        if(wrap){wrap.scrollLeft-=d.x*zoom;wrap.scrollTop-=d.y*zoom;}
+        setPan(v=>({x:v.x+d.x*zoom,y:v.y+d.y*zoom}));
         drag.current={...p,space:true,gesture:"none"};
         return;
       }
