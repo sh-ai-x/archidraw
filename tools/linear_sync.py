@@ -56,6 +56,7 @@ import re
 import ssl
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -80,6 +81,17 @@ _LINEAR_API_URL = "https://api.linear.app/graphql"
 # 5s ceiling was hitting on initial network setup; >30s would block the Edit too long
 # in a true outage.
 _LINEAR_HTTP_TIMEOUT_S = 15
+# A06-1 (2026-08-19): Linear's quota is 1500 req/hr (~25/min). A naive
+# auto-sync round that fires on every Edit|Write can fan out to ~10
+# GraphQL calls (project find/create + matches + state + handoff) and
+# exhaust the budget in tens of minutes of active editing. Enforce a
+# minimum inter-call interval (token-bucket: 1 request per
+# _LINEAR_MIN_INTERVAL_S = 1.0s) so even a tightly-spammed round stays
+# well under the hourly cap. The bucket is per-process; concurrent
+# archidraw instances share only the upstream 1500/hr budget.
+_LINEAR_MIN_INTERVAL_S = 1.0
+_LINEAR_LAST_CALL_MONOTONIC: float | None = None
+_LINEAR_RATE_LOCK = threading.Lock()
 _HANDOFF_DIR = Path(".dev-kit") / "hand-off" / "linear"
 _CONFIG_REL = Path(".dev-kit") / "linear-config.json"
 _ENV_FILE_REL = Path(".dev-kit") / ".env.linear"
@@ -665,6 +677,19 @@ def _linear_query(query: str, variables: dict[str, Any]) -> dict[str, Any]:
     api_key = os.environ.get("LINEAR_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("LINEAR_API_KEY not set")
+    # A06-1 (2026-08-19): rate limit to keep auto-sync well under Linear's
+    # 1500 req/hr quota. Sleep the remainder of the minimum inter-call
+    # interval (1.0s) before issuing the request; in the worst case a
+    # tight round of N calls takes N seconds instead of completing in
+    # one wall-clock millisecond.
+    global _LINEAR_LAST_CALL_MONOTONIC
+    with _LINEAR_RATE_LOCK:
+        now = time.monotonic()
+        if _LINEAR_LAST_CALL_MONOTONIC is not None:
+            elapsed = now - _LINEAR_LAST_CALL_MONOTONIC
+            if elapsed < _LINEAR_MIN_INTERVAL_S:
+                time.sleep(_LINEAR_MIN_INTERVAL_S - elapsed)
+        _LINEAR_LAST_CALL_MONOTONIC = time.monotonic()
     body = json.dumps({"query": query, "variables": variables}).encode("utf-8")
     req = urllib.request.Request(
         _LINEAR_API_URL,
@@ -936,19 +961,26 @@ def _extract_issue_id(issue_ref: str) -> str:
 def _is_completion_signal(prompt: str) -> bool:
     """Return True iff the prompt declares completion of the task.
 
-    A prompt qualifies when it contains a completion verb
-    (`done`, `finished`, `complete[d]?`, `shipped`, `merged`, `closed`).
-    Work-verb-wins was tried and dropped: phrases like "done with
-    the auth refactor" describe a completed task (where "refactor"
-    is a noun, not new work), and false-negatives were far more
-    common than false-positives in practice.
+    A prompt qualifies when a completion verb (`done`, `finished`,
+    `complete[d]?`, `shipped`, `merged`, `closed`) appears in
+    **declarative position** — at the start of the prompt or followed
+    by terminal punctuation. The A06-3 false-positive class was
+    "we're done with the auth refactor" (verb mid-sentence, no
+    completion intent); requiring the verb to lead or terminate the
+    prompt avoids that without losing real "Done." / "merged!" / etc.
     """
     s = prompt.strip().lower()
     if not s:
         return False
-    completion = ("done", "finished", "completed", "complete",
-                  "shipped", "merged", "closed")
-    return any(re.search(rf"\b{v}\b", s) for v in completion)
+    # Strip a single leading question mark or interjection so casual
+    # "ok done" still counts; everything else must be the verb in
+    # declarative position.
+    declarative = s.lstrip("?!., ")
+    for verb in ("done", "finished", "completed", "complete",
+                 "shipped", "merged", "closed"):
+        if declarative == verb or declarative.startswith(verb + (" ", "!", ".", ",")):
+            return True
+    return False
 
 
 def _is_work_signal(prompt: str) -> bool:
@@ -1727,14 +1759,19 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print("  Option B — user-scope env file (recommended for solo dev, shared across repos):")
         print("    1. mkdir -p ~/.config/dev-kit")
-        print("    2. echo 'LINEAR_API_KEY=<your-token>' >> ~/.config/dev-kit/.env")
+        print("    2. { umask 077 && echo 'LINEAR_API_KEY=<your-token>' >> ~/.config/dev-kit/.env; }")
         print("       (or $XDG_CONFIG_HOME/dev-kit/.env if XDG_CONFIG_HOME is set)")
         print("         Optional: LINEAR_TEAM_ID=..., LINEAR_PROJECT_NAME=...")
+        print("       A07-1 (2026-08-19): the { umask 077; ...; } subshell forces 600 perms")
+        print("       on the freshly-appended line regardless of the calling umask;")
+        print("       the trailing `; }` runs outside the subshell so the rest of")
+        print("       the script's umask is unchanged. chmod 600 afterwards if you")
+        print("       already created the file with default umask.")
         print("    3. python3 tools/linear_sync.py on")
         print("    4. python3 tools/linear_sync.py project-name <name>   # optional")
         print()
         print("  Option C — per-worktree env file (backward compat, Linear-only):")
-        print(f"    1. Add to {repo / _ENV_FILE_REL} (untracked, .gitignore'd):")
+        print(f"    1. {{ umask 077 && cat >> {repo / _ENV_FILE_REL}; }}  # then type/paste the key")
         print("         LINEAR_API_KEY=<your-token>")
         print("    2. python3 tools/linear_sync.py on")
         env_key = bool(os.environ.get("LINEAR_API_KEY", "").strip())

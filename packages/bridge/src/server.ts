@@ -90,10 +90,30 @@ export class BridgeServer implements BridgeTransport {
   }
 
   private readPublish(request: IncomingMessage, response: ServerResponse): void {
+    // A06-2 (2026-08-19): cap body size so a local-process flood can't
+    // allocate unbounded memory via `body += chunk` on POST /publish.
+    // 1 MiB is well above any legitimate scene delta (a 32K-element
+    // scene serialises to a few hundred KB).
+    const MAX_PUBLISH_BODY_BYTES = 1024 * 1024;
     let body = "";
+    let bytes = 0;
+    let rejected = false;
     request.setEncoding("utf8");
-    request.on("data", (chunk: string) => { body += chunk; });
+    request.on("data", (chunk: string) => {
+      if (rejected) return;
+      bytes += Buffer.byteLength(chunk, "utf8");
+      if (bytes > MAX_PUBLISH_BODY_BYTES) {
+        rejected = true;
+        response.writeHead(413, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: "Request body too large" }));
+        // Best-effort: try to drain so the socket can close cleanly.
+        request.pause();
+        return;
+      }
+      body += chunk;
+    });
     request.on("end", () => {
+      if (rejected) return;
       try {
         const parsed: unknown = JSON.parse(body);
         const delta = isSceneDelta(parsed) ? parsed : (parsed && typeof parsed === "object" && isSceneDelta((parsed as { delta?: unknown }).delta) ? (parsed as { delta: SceneDelta }).delta : null);
