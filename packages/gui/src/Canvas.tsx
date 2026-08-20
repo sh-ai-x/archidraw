@@ -3,6 +3,7 @@ import type {Element} from "@archidraw/schema";
 import {clampCanvasBackingStore,makeElement,MAX_CANVAS_DIM,pointInElement,type SceneStore,type Tool} from "./scene";
 import {renderScene} from "./Renderer";
 import {boundingBoxFromElements} from "./tabs-state";
+import {useTextBinding} from "./useTextBinding";
 
 type ResizeHandle = "nw"|"ne"|"sw"|"se";
 const MIN_SIZE = 4;
@@ -20,6 +21,11 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
   const pointerDownPos=useRef<{x:number;y:number;hit:Element|null}|null>(null);
   const DRAGGING_THRESHOLD=3;
   const elements=store.queryElements();
+  // F10: extract the text-in-shape binding flow into useTextBinding so
+  // the JSX handlers below stay one-liners and the predicate logic
+  // (F02 update vs create, F03 preserve non-text bindings, F06 null
+  // guard) lives in exactly one place.
+  const {handleBindAt} = useTextBinding({store, elements, setSelected, setTool});
   const bbox=boundingBoxFromElements(elements);
   // A06 review: cap canvas size to prevent unbounded allocation if bbox is huge
   // (e.g. tampered localStorage with attacker-controllable coordinates).
@@ -131,67 +137,8 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
         if(next!==null&&next.trim()!=="")store.updateElement(textHit.id,{text:next,originalText:next} as any);
         return;
       }
-      // Double-click on a shape → create or update a text element bound
-      // to that shape (Excalidraw-style "text inside rectangle"). The
-      // renderer's containerId branch wraps + flushes the text to the
-      // shape's bounds with no left padding, so the user types once
-      // and the text fills the shape evenly.
-      const shapeHit=[...elements].reverse().find(el=>(el.type==="rectangle"||el.type==="diamond"||el.type==="ellipse")&&pointInElement(el,p.x,p.y,8));
-      if(shapeHit){
-        const content=window.prompt("Text:",String((shapeHit as any).text||""));
-        if(content===null)return;
-        const id=(typeof crypto!=="undefined"&&typeof crypto.randomUUID==="function"
-          ?crypto.randomUUID()
-          :Math.random().toString(36).slice(2));
-        // F02 review (2026-08-20): re-double-clicking an already-text-bound
-        // shape must UPDATE the existing bound text, not create a fresh
-        // element. Without this, repeated double-clicks accumulated orphan
-        // text elements (each createElement pushes a new entry onto the
-        // scene). Filter for the existing bound text and route through
-        // updateElement when present.
-        // F03 review (2026-08-20): filter for non-text bindings to
-        // PRESERVE arrow / container bindings when writing back — the
-        // previous `b.type === "text"` filter silently severed the
-        // bidirectional binding contract.
-        // F06 review (2026-08-20): guard against malformed boundElements
-        // items (`[null]` / `[{}]` bypasses assertSceneShape's structural
-        // check). The `b && typeof b === "object"` predicate matches
-        // Excalidraw's own validator shape.
-        const curTextBound = (shapeHit.boundElements || []).find(
-          (b: any) => b && typeof b === "object" && b.type === "text"
-        );
-        if (curTextBound) {
-          store.updateElement(curTextBound.id, {text: content, originalText: content} as any);
-          setSelected(curTextBound.id);
-          setTool("select");
-          return;
-        }
-        const nonTextBound = (shapeHit.boundElements || []).filter(
-          (b: any) => b && typeof b === "object" && b.type !== "text"
-        );
-        // Place the text element's own bounds at the shape's bounds so the
-        // legacy non-container code path is a no-op fallback. The renderer
-        // ignores these when containerId is set. Defaults are forced to
-        // (textAlign=left, verticalAlign=top) so the text starts at the
-        // shape's top-left corner with no left-bias — the renderer wraps
-        // long text down from there.
-        const txt:any={
-          ...makeElement("text",shapeHit.x,shapeHit.y,shapeHit.width,shapeHit.height),
-          id,
-          text:content,
-          originalText:content,
-          containerId:shapeHit.id,
-          width:shapeHit.width,
-          height:shapeHit.height,
-          textAlign:"left",
-          verticalAlign:"top",
-        };
-        // Mark the shape as having a bound text element (Excalidraw-style).
-        store.updateElement(shapeHit.id,{boundElements:[...nonTextBound,{id,type:"text"}]});
-        store.createElement(txt);
-        setSelected(id);
-        setTool("select");
-      }
+      // F10: route through useTextBinding for the shape-hit case.
+      handleBindAt(p.x, p.y);
     }}
     onWheel={e=>{
       if(e.ctrlKey||e.metaKey){
@@ -233,49 +180,8 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
       if(tool==="text"){
         const content=window.prompt("Text:","");
         if(content===null||content.trim()==="")return;
-        // If the click landed inside a rectangle/diamond/ellipse, bind the
-        // text to that shape — Excalidraw-style "text in shape". The
-        // renderer then flushes it to the shape's top-left with a
-        // symmetric 4px inset and word-wraps to the inner width, so the
-        // text fills the shape from the left edge regardless of WHERE in
-        // the shape the user clicked. Without this auto-bind, a click in
-        // the middle of a shape created a standalone text element that
-        // appeared at the click point (visually biased right inside the
-        // shape's frame), which the user reports as "pushed right".
-        const shapeHit=[...elements].reverse().find(el=>(el.type==="rectangle"||el.type==="diamond"||el.type==="ellipse")&&pointInElement(el,p.x,p.y,8));
-        if(shapeHit){
-          const id=(typeof crypto!=="undefined"&&typeof crypto.randomUUID==="function"
-            ?crypto.randomUUID()
-            :Math.random().toString(36).slice(2));
-          const txt:any={
-            ...makeElement("text",shapeHit.x,shapeHit.y,shapeHit.width,shapeHit.height),
-            id,
-            text:content,
-            originalText:content,
-            containerId:shapeHit.id,
-            width:shapeHit.width,
-            height:shapeHit.height,
-            textAlign:"left",
-            verticalAlign:"top",
-          };
-          const curTextBound = (shapeHit.boundElements || []).find(
-            (b: any) => b && typeof b === "object" && b.type === "text"
-          );
-          if (curTextBound) {
-            store.updateElement(curTextBound.id, {text: content, originalText: content} as any);
-            setSelected(curTextBound.id);
-            setTool("select");
-            return;
-          }
-          const nonTextBound = (shapeHit.boundElements || []).filter(
-            (b: any) => b && typeof b === "object" && b.type !== "text"
-          );
-          store.updateElement(shapeHit.id,{boundElements:[...nonTextBound,{id,type:"text"}]});
-          store.createElement(txt);
-          setSelected(id);
-          setTool("select");
-          return;
-        }
+        // F10: route through useTextBinding for the shape-hit case.
+        if (handleBindAt(p.x, p.y)) return;
         // No shape under the click — fall back to standalone text at the
         // click point. Renderer still defaults to (textAlign=left,
         // verticalAlign=top) so the text flushes to its own x, y.
