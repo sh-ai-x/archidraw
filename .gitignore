@@ -73,3 +73,11 @@ yarn-error.log*
 # Local MCP server dev launchers
 packages/mcp-server/dev-*.mjs
 !packages/mcp-server/dist/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# dev-kit TDD guard runtime state
+.dev-kit/.tdd-cycle.json
+.dev-kit/.tdd-scope.json
