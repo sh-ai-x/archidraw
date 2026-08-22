@@ -49,6 +49,13 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
   useEffect(()=>{
     const c=ref.current;
     if(!c)return;
+    // A06 review round 4 (2026-08-22): coalesce renderScene calls via
+    // requestAnimationFrame. Without rAF, a 250 Hz trackpad × a 5k-
+    // element scene queues one full render per pointer-move event —
+    // 250 renderScene calls per second sustained. rAF caps the rate
+    // to the display refresh (60–120 Hz) and drops the tail when the
+    // pointer produces more events than the screen can paint.
+    let rafId: number | null = null;
     const resize=()=>{
       // Cap the BACKING STORE (cssW*dpr) so a 3x-DPR display can't blow
       // past MAX_DIM. cssW/cssH are already <= MAX_DIM, so a HiDPI display
@@ -67,11 +74,29 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
         start: binding.startPoint,
         end: pendingBindingPreview,
       } : null;
-      renderScene(c,elements,zoom,pan,selected,marquee,multiSel,rubber,store.getScene().bindings);
+      // Coalesce: only one render per animation frame. rAF is undefined
+      // in non-browser test environments (jsdom without a paint loop);
+      // fall through to the immediate render so unit tests still see
+      // the paint on the same tick.
+      if (typeof requestAnimationFrame === "function") {
+        if (rafId !== null) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          renderScene(c,elements,zoom,pan,selected,marquee,multiSel,rubber,store.getScene().bindings);
+        });
+      } else {
+        renderScene(c,elements,zoom,pan,selected,marquee,multiSel,rubber,store.getScene().bindings);
+      }
     };
     resize();
     window.addEventListener("resize",resize);
-    return()=>window.removeEventListener("resize",resize);
+    return()=>{
+      window.removeEventListener("resize",resize);
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+    };
   },[elements,zoom,pan,selected,marquee,multiSel,cssW,cssH,pendingBindingPreview]);
 
   // 2. keyboard shortcuts
