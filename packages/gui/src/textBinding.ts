@@ -81,12 +81,27 @@ export const bindTextAt = (
 ): BindTextResult | null => {
   const shape = findShapeAt(elements, x, y);
   if (!shape) return null;
-  const defaultText = String((shape as unknown as {text?: string}).text ?? "");
+  // F02-RC3 (2026-08-22): pre-fill the prompt from the existing bound
+  // text's content when the user is UPDATING rather than CREATING. The
+  // previous default (`shape.text ?? ""`) was always empty because
+  // shapes do not carry a `text` field — every re-bind required the
+  // user to retype the entire string and an empty-cancel looked like
+  // a creation. Look up the bound text element by id and use ITS text
+  // as the default so updating an existing label is one keystroke
+  // (any edit) away.
+  const existing = findBoundText(shape);
+  const existingEl = existing
+    ? elements.find(el => el.id === existing.id)
+    : undefined;
+  const existingContent =
+    existingEl && typeof (existingEl as unknown as {text?: unknown}).text === "string"
+      ? (existingEl as unknown as {text: string}).text
+      : "";
+  const defaultText = existingContent;
   const content = prompt("Text:", defaultText);
   if (content === null) return null;
   // F02: UPDATE existing bound text instead of creating a new one
   // (re-double-clicks used to accumulate orphan text elements).
-  const existing = findBoundText(shape);
   if (existing) {
     return {
       shape: shape as SchemaElement,

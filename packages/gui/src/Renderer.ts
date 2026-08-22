@@ -19,6 +19,30 @@ const TEXT_IN_SHAPE_INSET = 4;
 // ──────────────────────────────────────────────────────────────────────────
 
 /**
+ * Coerce an anchor-like value (a `[number, number]` tuple) to a SAFE
+ * `[nx, ny]` pair on the unit square. Anything that isn't a finite
+ * pair returns `[0.5, 0.5]` (the visual center) so a tampered or
+ * hand-edited scene cannot crash the renderer with NaN / Infinity /
+ * out-of-bounds values. F07-RC2 (2026-08-22): mirrors the bound-text
+ * text-coercion pass — apply the same trust boundary to the binding
+ * anchor before the renderer destructures it.
+ */
+export const safeAnchor = (
+  raw: unknown,
+): readonly [number, number] => {
+  if (!Array.isArray(raw) || raw.length < 2) return [0.5, 0.5];
+  const x = Number(raw[0]);
+  const y = Number(raw[1]);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return [0.5, 0.5];
+  // Clamp to [0, 1] — out-of-range anchors would render text outside
+  // the shape's bbox, masking the binding visually.
+  return [
+    x < 0 ? 0 : x > 1 ? 1 : x,
+    y < 0 ? 0 : y > 1 ? 1 : y,
+  ];
+};
+
+/**
  * Resolve the render bounds for a text element. If bound to a container
  * shape, returns the shape's inner bounds (with a symmetric inset so
  * text fills the shape evenly); otherwise returns the element's own
@@ -273,7 +297,12 @@ export const renderScene=(
         for (const binding of myBindings) {
           const shape = elements.find(el => el.id === binding.shapeId && !el.isDeleted);
           if (!shape) continue;
-          const [nx, ny] = binding.shapeAnchor;
+          // F07-RC2 (2026-08-22): trust-boundary on binding anchors. A
+          // tampered scene could feed NaN / Infinity / out-of-range
+          // values here; coerce to a safe unit-square pair before the
+          // destructure so the renderer never throws or paints outside
+          // the shape bbox.
+          const [nx, ny] = safeAnchor(binding.shapeAnchor);
           const cx = shape.x + (shape.width || 0) * nx;
           const cy = shape.y + (shape.height || 0) * ny;
           // MVP: render the text inside the bound shape's bbox, centered
@@ -288,8 +317,11 @@ export const renderScene=(
           // Use the shape's anchor as the visual center when the text
           // element asks for centered alignment. Otherwise draw at the
           // inner-bounds top-left as the existing containerId path did.
+          // Compare against the SAFE anchor so a tampered input (NaN,
+          // Infinity, out-of-range) doesn't flip the layout flag.
+          const safe = safeAnchor(binding.shapeAnchor);
           const isCentered = (e.textAlign === "center" || e.textAlign === "right")
-            || (binding.shapeAnchor[0] !== 0.5 || binding.shapeAnchor[1] !== 0.5);
+            || (safe[0] !== 0.5 || safe[1] !== 0.5);
           const drawBounds = isCentered
             ? {...bounds, x: cx - bounds.w / 2, y: cy - bounds.h / 2}
             : bounds;

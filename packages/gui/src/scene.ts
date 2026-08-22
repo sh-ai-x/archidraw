@@ -149,6 +149,18 @@ export const MAX_ELEMENTS = 5000;
 export const MAX_PARSE_DEPTH = 32;
 
 /**
+ * (2026-08-22) Review round 4 (F02 review / A08 major): cap the N:N
+ * shape↔text binding collection length at parse time, matching the
+ * MAX_ELEMENTS / MAX_PARSE_DEPTH guards on `elements`. A tampered or
+ * malicious scene.json claiming 10M bindings[] entries would otherwise
+ * bypass assertSceneShape's elements-only check and freeze the tab on
+ * the first render. Picked 5x MAX_ELEMENTS (25k) as the conservative
+ * upper bound: each element can have a handful of bindings, but 25k
+ * already exceeds any human-authored scene.
+ */
+export const MAX_BINDINGS = 25000;
+
+/**
  * Maximum canvas dimension (longest axis) for both the renderer backing
  * store and the SnapshotPanel PNG export. Hoisted from Canvas.tsx and
  * SnapshotPanel.tsx (which used to declare their own `MAX_DIM = 16384`)
@@ -227,6 +239,19 @@ export const assertSceneShape = (parsed: unknown): ShapeCheck => {
   }
   if (walkDepth(scene, 0) === DEPTH_SENTINEL) {
     return {ok: false, reason: `scene element tree exceeds MAX_PARSE_DEPTH=${MAX_PARSE_DEPTH}`};
+  }
+  // (2026-08-22) Review round 4: cap the N:N shape↔text binding
+  // collection. The field is optional (legacy scenes pre-date the
+  // N:N API), so missing `bindings` is fine; an explicit non-array
+  // (e.g. a string) is rejected so a tampered scene can't smuggle
+  // payload through the field's name.
+  if (scene.bindings !== undefined) {
+    if (!Array.isArray(scene.bindings)) {
+      return {ok: false, reason: "scene.bindings must be an array"};
+    }
+    if (scene.bindings.length > MAX_BINDINGS) {
+      return {ok: false, reason: `scene has too many bindings (${scene.bindings.length} > ${MAX_BINDINGS})`};
+    }
   }
   return {ok: true};
 };

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {describe, expect, it} from "vitest";
-import {assertSceneShape, MAX_ELEMENTS, MAX_PARSE_DEPTH} from "../src/scene";
+import {assertSceneShape, MAX_BINDINGS, MAX_ELEMENTS, MAX_PARSE_DEPTH} from "../src/scene";
 
 describe("SceneIO 파싱된 형태 가드 (A06 minor)", () => {
   // 25 MB 파일 크기 캡만으로는 부족하다 — 작은 JSON도 수백만 개의 중첩
@@ -48,5 +48,63 @@ describe("SceneIO 파싱된 형태 가드 (A06 minor)", () => {
 
   it("빈 원소 배열을 수락한다", () => {
     expect(assertSceneShape({type: "excalidraw", elements: []}).ok).toBe(true);
+  });
+
+  // (2026-08-22) A08 review round 4: assertSceneShape must cap the
+  // scene.bindings[] N:N binding collection the same way it caps
+  // elements[]. A tampered scene.json claiming 10M binding entries
+  // would otherwise bypass the elements-only check and freeze the
+  // tab on the first render.
+  it("MAX_BINDINGS를 초과하는 bindings[] 배열을 가진 scene을 거부한다", () => {
+    const tooManyBindings = Array.from({length: MAX_BINDINGS + 1}, (_, i) => ({
+      id: `b${i}`,
+      kind: "shape-text" as const,
+      shapeId: `s${i}`,
+      textId: `t${i}`,
+      shapeAnchor: [0.5, 0.5] as [number, number],
+      textAnchor: [0.5, 0.5] as [number, number],
+    }));
+    const result = assertSceneShape({
+      type: "excalidraw",
+      elements: [],
+      bindings: tooManyBindings,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/too many bindings/);
+  });
+
+  it("MAX_BINDINGS 이하의 bindings[] 배열은 수락된다", () => {
+    const okBindings = Array.from({length: 100}, (_, i) => ({
+      id: `b${i}`,
+      kind: "shape-text" as const,
+      shapeId: `s${i}`,
+      textId: `t${i}`,
+      shapeAnchor: [0.5, 0.5] as [number, number],
+      textAnchor: [0.5, 0.5] as [number, number],
+    }));
+    const result = assertSceneShape({
+      type: "excalidraw",
+      elements: [],
+      bindings: okBindings,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("bindings 필드가 없는 레거시 scene을 수락한다", () => {
+    const result = assertSceneShape({
+      type: "excalidraw",
+      elements: [],
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("bindings가 배열이 아닌 경우 명시적으로 거부된다", () => {
+    const result = assertSceneShape({
+      type: "excalidraw",
+      elements: [],
+      bindings: "not-an-array",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.reason).toMatch(/bindings must be an array/);
   });
 });
