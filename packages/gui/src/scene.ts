@@ -277,7 +277,29 @@ export const createMemoryStore=(initial=loadScene(), onChange:()=>void=()=>{}):S
     canRedo:()=>redoStack.length>0,
     // (2026-08-22) N:N binding helpers — snapshot before mutating so
     // they participate in the same undo/redo history as element ops.
-    updateBindings:(bindings)=>{snapshot();scene={...scene,bindings};persist()},
-    replaceScene:(next)=>{snapshot();scene=structuredClone(next);persist()},
+    // A06 review round 4 (2026-08-22): run assertSceneShape on the
+    // merged result so a tampered `updateBindings` payload with
+    // `bindings: <huge array>` cannot bypass the MAX_BINDINGS guard.
+    // On shape failure, leave the scene unchanged (no-op) rather
+    // than letting the caller's payload reach the store. The shape
+    // check also rejects non-array `bindings` so a payload like
+    // `bindings: "string"` cannot smuggle arbitrary data.
+    updateBindings:(bindings)=>{
+      if (!Array.isArray(bindings)) return;
+      if (bindings.length > MAX_BINDINGS) return;
+      const next = {...scene, bindings};
+      const check = assertSceneShape(next);
+      if (!check.ok) return;
+      snapshot();
+      scene = next;
+      persist();
+    },
+    replaceScene:(next)=>{
+      const check = assertSceneShape(next);
+      if (!check.ok) return;
+      snapshot();
+      scene = structuredClone(next);
+      persist();
+    },
   };
 };
