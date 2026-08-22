@@ -5,6 +5,7 @@ import {HANDLE_PAD, HANDLE_PX, HANDLE_STROKE_MARGIN, renderScene} from "./Render
 import {boundingBoxFromElements} from "./tabs-state";
 import {useTextBinding} from "./useTextBinding";
 import {ColorPanel} from "./ColorPanel";
+import {commitBindingDrag, tryStartBindingDrag, type BindingDragState} from "./bindingDrag";
 
 type ResizeHandle = "nw"|"ne"|"sw"|"se";
 const MIN_SIZE = 4;
@@ -24,8 +25,12 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
   // to one shape's binding point. The other end is rubber-banded to the
   // current pointer position (pendingBindingPreview) and finalized on
   // pointerup, with another shape's binding point if the cursor is
-  // within snap tolerance at that moment.
-  const pendingBinding=useRef<{startPoint:{x:number;y:number}; element:Element; fixedPoint:any}|null>(null);
+  // within snap tolerance at that moment. The pure state-machine logic
+  // (resolver / committer) lives in `bindingDrag.ts` so it can be
+  // unit-tested without React; this component owns only the React-side
+  // persistence (`useRef` for the captured start, `useState` for the
+  // rubber-band endpoint + hover flag).
+  const pendingBinding=useRef<BindingDragState|null>(null);
   const [pendingBindingPreview,setPendingBindingPreview]=useState<{x:number;y:number}|null>(null);
   const [hoverBinding,setHoverBinding]=useState(false);
   const elements=store.queryElements();
@@ -244,21 +249,14 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
         if(hit)store.deleteElement(hit.id);
         return;
       }
-      // Task E — arrow-tool binding-point pick. If the user pressed on
-      // one of the snap zones around a shape's binding point, capture
-      // it as the start of an arrow-to-shape drag and wait for pointerup
-      // to materialize the arrow. The arrow is NOT created on pointerdown
-      // because we don't yet know the end point.
+      // Task E — arrow-tool binding-point pick. The pure resolver in
+      // `bindingDrag.ts::tryStartBindingDrag` does the hit-test +
+      // closest-point math; the React-side `useRef` here keeps the
+      // captured start across the pointermove/pointerup lifecycle.
       if (tool === "arrow") {
-        const startHit = hitBindingPoint(elements, p.x, p.y);
-        if (startHit) {
-          const fp = closestBindingPoint(startHit.element, p.x, p.y).fixedPoint;
-          const startWorld = bindingPointWorld(startHit.element, startHit.point);
-          pendingBinding.current = {
-            startPoint: startWorld,
-            element: startHit.element,
-            fixedPoint: fp,
-          };
+        const drag = tryStartBindingDrag([p.x, p.y], elements);
+        if (drag) {
+          pendingBinding.current = drag;
           setPendingBindingPreview({ x: p.x, y: p.y });
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
           return;
@@ -364,36 +362,16 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
     onPointerCancel={()=>{drag.current=null;setMarquee(null);setHovering(false);setHoverBinding(false);pointerDownPos.current=null;pendingBinding.current=null;setPendingBindingPreview(null);}}
     onPointerUp={e=>{
       try{(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)}catch{};
-      // Task E — finalize an arrow-to-shape binding drag.
+      // Task E — finalize an arrow-to-shape binding drag. The pure
+      // `commitBindingDrag` helper resolves the endpoint, builds
+      // the arrow, and writes it to the store. We just clear the
+      // captured state + select the new arrow + flip back to
+      // select tool.
       if (pendingBinding.current) {
         const start = pendingBinding.current;
         const pEnd = world(e as unknown as React.PointerEvent);
-        const endHit = hitBindingPoint(elements, pEnd.x, pEnd.y);
-        const arrow = makeElement("arrow", start.startPoint.x, start.startPoint.y, 0, 0);
-        // End point is the endHit binding point's world coord (if latched) or the
-        // raw pointer position. Pre-fix used endHit.element.x / .y which is the
-        // top-left corner of the target shape — the visual line then went to a
-        // point nowhere near where the user dragged to. Use bindingPointWorld
-        // (or closestBindingPoint's fixedPoint) so the line lands on the
-        // actual binding point the user hovered.
-        let endWorldX: number;
-        let endWorldY: number;
-        let endBinding: any = null;
-        if (endHit) {
-          const endFp = closestBindingPoint(endHit.element, pEnd.x, pEnd.y);
-          const endWorld = bindingPointWorld(endHit.element, endFp.point);
-          endWorldX = endWorld.x;
-          endWorldY = endWorld.y;
-          endBinding = { elementId: endHit.element.id, focus: 0, gap: 1, fixedPoint: endFp.fixedPoint };
-        } else {
-          endWorldX = pEnd.x;
-          endWorldY = pEnd.y;
-        }
-        (arrow as any).points = [[0, 0], [endWorldX - start.startPoint.x, endWorldY - start.startPoint.y]];
-        (arrow as any).startBinding = { elementId: start.element.id, focus: 0, gap: 1, fixedPoint: start.fixedPoint };
-        (arrow as any).endBinding = endBinding;
-        store.createElement(arrow);
-        setSelected(arrow.id);
+        const newId = commitBindingDrag(start, [pEnd.x, pEnd.y], elements, store);
+        if (newId) setSelected(newId);
         pendingBinding.current = null;
         setPendingBindingPreview(null);
         setTool("select");
