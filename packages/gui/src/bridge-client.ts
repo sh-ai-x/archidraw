@@ -4,6 +4,19 @@ export type SceneListener = (scene: unknown) => void;
 const SSE_URL = "http://127.0.0.1:5174/events";
 const POLL_URL = "http://127.0.0.1:5174/scene";
 
+/**
+ * A08 review round 4 (2026-08-22): the previous `EventSource(SSE_URL)`
+ * blindly consumed every event frame. The bridge already enforces
+ * allowlist-origin on POST `/publish` and SSE producer-side, but a
+ * defense-in-depth check on the consumer side rejects any URL that
+ * resolves off-loopback (e.g. tampered localStorage config, a
+ * malicious browser extension that overrode the URL). Cheap
+ * `startsWith("http://127.0.0.1:")` is the strongest check we can
+ * make without breaking the loopback contract.
+ */
+const isLoopbackSseUrl = (url: string): boolean =>
+  url.startsWith("http://127.0.0.1:") || url.startsWith("http://localhost:");
+
 let es: EventSource | null = null;
 const deltaListeners = new Set<SceneDeltaListener>();
 const sceneListeners = new Set<SceneListener>();
@@ -55,6 +68,14 @@ function notifyScene(scene: unknown) {
 
 function connect() {
   if (es || circuitBroken) return;
+  if (!isLoopbackSseUrl(SSE_URL)) {
+    // A08 review round 4: refuse to open any non-loopback SSE channel.
+    // This guards against a tampered `SSE_URL` constant being replaced
+    // by a build-time injection or a runtime override.
+    console.error("[bridge-client] refusing non-loopback SSE_URL:", SSE_URL);
+    circuitBroken = true;
+    return;
+  }
   try {
     es = new EventSource(SSE_URL);
     es.addEventListener("open", () => { reconnectAttempt = 0; });
