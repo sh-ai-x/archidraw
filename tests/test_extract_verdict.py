@@ -29,9 +29,24 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "extract-verdict.py"
+
+# (2026-08-22) A06 review round 4: import the freshness helper directly
+# so the unit test below can exercise the pure function without
+# needing a live `gh` CLI or a hermetic fixture. The script imports
+# these from the same module; if the helper's contract drifts the
+# subprocess tests below still gate but the unit assertion below
+# fires first.
+import importlib.util as _importlib_util
+_spec = _importlib_util.spec_from_file_location(
+    "extract_verdict_module", SCRIPT
+)
+_ev_module = _importlib_util.module_from_spec(_spec)
+_spec.loader.exec_module(_ev_module)
+_is_fresh_enough = _ev_module._is_fresh_enough
 
 # Sentinel emitted by extract-verdict.py when the file existed with
 # parseable content but no assistant message contained a `Verdict:`
@@ -458,4 +473,51 @@ def test_auto_fetch_falls_back_when_cutoff_excludes_all(
         f"auto-fetch fallback returned unexpected verdict: "
         f"stdout={result.stdout!r} stderr={result.stderr!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# A06 review round 4 (2026-08-22): the comment-fallback path uses
+# `_is_fresh_enough(created_at, freshness_limit)` to discard verdicts
+# from earlier pushes. A stale "Changes Requested" verdict from a
+# previous run would otherwise leak through and re-fail the gate even
+# after the agent dropped its verdict on the current run. Pure unit
+# tests for the helper.
+# ---------------------------------------------------------------------------
+
+
+class TestFreshnessFilter:
+    """Pins the freshness contract so a future edit cannot widen the
+    stale-verdict window without a corresponding test churn."""
+
+    NOW = datetime(2026, 8, 22, 12, 0, 0, tzinfo=timezone.utc)
+    FRESHNESS_LIMIT = NOW - timedelta(hours=4)
+
+    def test_현재_시각_이내는_fresh로_판정된다(self) -> None:
+        ts = (self.NOW - timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
+        assert _is_fresh_enough(ts, self.FRESHNESS_LIMIT) is True
+
+    def test_정확히_4시간_이내는_stale로_판정된다(self) -> None:
+        ts = (self.FRESHNESS_LIMIT - timedelta(seconds=1)).isoformat().replace("+00:00", "Z")
+        assert _is_fresh_enough(ts, self.FRESHNESS_LIMIT) is False
+
+    def test_4시간_이전_시각은_stale로_판정된다(self) -> None:
+        ts = (self.NOW - timedelta(hours=8)).isoformat().replace("+00:00", "Z")
+        assert _is_fresh_enough(ts, self.FRESHNESS_LIMIT) is False
+
+    def test_빈_문자열은_fresh로_판정된다(self) -> None:
+        # Tolerate missing timestamp rather than silently dropping —
+        # the caller can decide via other signals (cutoff, author id).
+        assert _is_fresh_enough("", self.FRESHNESS_LIMIT) is True
+
+    def test_파싱_실패_문자열은_fresh로_판정된다(self) -> None:
+        # Tolerate unknown formats; the helper returns True so the
+        # comment flows through to the existing author-id / cutoff
+        # gates.
+        assert _is_fresh_enough("not-an-iso-8601-timestamp", self.FRESHNESS_LIMIT) is True
+
+    def test_Z_접미사_UTC_타임스탬프를_처리한다(self) -> None:
+        # claude[bot] / github-actions[bot] timestamps use the
+        # Python json.dumps-serialized style: 2026-08-22T08:00:00Z.
+        ts = (self.NOW - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+        assert _is_fresh_enough(ts, self.FRESHNESS_LIMIT) is True
 
