@@ -85,6 +85,7 @@ export function countIssues(els: ElementForLayout[]): number {
 export function silentAutoFix(elsIn: ElementForLayout[]): ElementForLayout[] {
   const els = elsIn.map(e => ({...e}));
   const ctx = measureContext();
+  let changed = false;
 
   // Pre-step: resize each text bbox to its measured width, and resize the parent
   // rectangle (whose center contains this text's center) to contain the text.
@@ -97,6 +98,7 @@ export function silentAutoFix(elsIn: ElementForLayout[]): ElementForLayout[] {
       const oldCenter = e.x + (e.width || 0) / 2;
       e.width = newW;
       e.x = Math.round(oldCenter - newW / 2);  // keep centered
+      changed = true;
       // Find the container (parent rectangle) that contains the text's center
       for (const c of els) {
         if (c === e || c.isDeleted || c.type === "text" || c.type === "arrow" || c.type === "line") continue;
@@ -140,6 +142,7 @@ export function silentAutoFix(elsIn: ElementForLayout[]): ElementForLayout[] {
         const oldCenter = e.x + (e.width || 0) / 2;
         e.width = newW;
         e.x = Math.round(oldCenter - newW / 2);
+        changed = true;
         for (const c of els) {
           if (c === e || c.isDeleted || c.type === "text" || c.type === "arrow" || c.type === "line") continue;
           const cx1 = c.x, cy1 = c.y, cx2 = c.x + (c.width || 0), cy2 = c.y + (c.height || 0);
@@ -189,16 +192,18 @@ export function silentAutoFix(elsIn: ElementForLayout[]): ElementForLayout[] {
             larger.width  = Math.max(lx2, needX2) - larger.x;
             larger.height = Math.max(ly2, needY2) - larger.y;
             moved = true;
+            changed = true;
           }
         } else {
           // Sibling overlap → push lower one down
           if (smaller.y >= larger.y) smaller.y += Math.ceil(oy) + 2;
           else larger.y += Math.ceil(oy) + 2;
           moved = true;
+          changed = true;
         }
       }
     }
     if (!moved) break;
   }
-  return els;
+  return changed ? els : elsIn;
 }
