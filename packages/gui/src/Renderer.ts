@@ -10,6 +10,22 @@ import {getStroke} from "perfect-freehand";
 // container-bound text element rendered at its own x, not the shape's.
 const TEXT_IN_SHAPE_INSET = 4;
 
+// (2026-08-22) F12 review round 4: hoisted shared handle-geometry
+// constants. Previously Canvas.tsx declared its own HANDLE_PX (8) /
+// PAD (6) and Renderer.ts redeclared the same values inline as `8 /
+// zoom` and `e.x - 6` literals. Drift between the two led to corner
+// handles whose paint sat outside the hit-test rect at zoom > ~1.0 —
+// the renderer drew handles bigger than the canvas's hit-test allowed
+// for. Centralising here means a single edit shifts both at once.
+export const HANDLE_PX = 8;
+export const HANDLE_PAD = 6;
+// Renderer outline strokes are `lineWidth = 1.5` in world units; a
+// stroke centered on the rect extends ~0.75 world units on each side.
+// Exported so Canvas's hit-test margin matches what the renderer
+// actually paints, otherwise the visible handle is outside the
+// hit-test rectangle by exactly this margin.
+export const HANDLE_STROKE_MARGIN = 0.75;
+
 // ──────────────────────────────────────────────────────────────────────────
 // F08 refactor (2026-08-20): extracted pure layout helpers from the inline
 // per-frame loop in renderScene. Each helper is independently unit-testable
@@ -43,6 +59,22 @@ export const safeAnchor = (
 };
 
 /**
+ * Inner bounds of a shape — the rectangle text is rendered into. Both
+ * the N:N binding path and the legacy containerId path go through this
+ * helper so the geometry stays in one place (review round 4 found the
+ * two paths had diverged on the inset arithmetic).
+ */
+export const shapeInnerBounds = (
+  shape: {x: number; y: number; width?: number; height?: number},
+  inset: number = TEXT_IN_SHAPE_INSET,
+): {x: number; y: number; w: number; h: number} => ({
+  x: shape.x + inset,
+  y: shape.y + inset,
+  w: Math.max(0, (shape.width || 0) - 2 * inset),
+  h: Math.max(0, (shape.height || 0) - 2 * inset),
+});
+
+/**
  * Resolve the render bounds for a text element. If bound to a container
  * shape, returns the shape's inner bounds (with a symmetric inset so
  * text fills the shape evenly); otherwise returns the element's own
@@ -55,17 +87,12 @@ export const resolveContainerBounds = (
   elements: Element[],
   inset: number = TEXT_IN_SHAPE_INSET,
 ): {bounds: {x: number; y: number; w: number; h: number}; wrapped: boolean; rawText: string} => {
-  let bounds = {x: e.x, y: e.y, w: e.width || 0, h: e.height || 0};
+  let bounds: {x: number; y: number; w: number; h: number} = {x: e.x, y: e.y, w: e.width || 0, h: e.height || 0};
   let wrapped = false;
   if (e.containerId) {
     const c = elements.find(el => el.id === e.containerId && !el.isDeleted);
     if (c) {
-      bounds = {
-        x: c.x + inset,
-        y: c.y + inset,
-        w: Math.max(0, (c.width || 0) - 2 * inset),
-        h: Math.max(0, (c.height || 0) - 2 * inset),
-      };
+      bounds = shapeInnerBounds(c, inset);
       wrapped = true;
     }
   }
@@ -302,26 +329,21 @@ export const renderScene=(
           // values here; coerce to a safe unit-square pair before the
           // destructure so the renderer never throws or paints outside
           // the shape bbox.
-          const [nx, ny] = safeAnchor(binding.shapeAnchor);
+          const safe = safeAnchor(binding.shapeAnchor);
+          const nx = safe[0], ny = safe[1];
           const cx = shape.x + (shape.width || 0) * nx;
           const cy = shape.y + (shape.height || 0) * ny;
           // MVP: render the text inside the bound shape's bbox, centered
           // at the binding's anchor point. textAlign + verticalAlign drive
-          // the line layout as before.
-          const bounds = {
-            x: shape.x + TEXT_IN_SHAPE_INSET,
-            y: shape.y + TEXT_IN_SHAPE_INSET,
-            w: Math.max(0, (shape.width || 0) - 2 * TEXT_IN_SHAPE_INSET),
-            h: Math.max(0, (shape.height || 0) - 2 * TEXT_IN_SHAPE_INSET),
-          };
+          // the line layout as before. shapeInnerBounds() is the shared
+          // helper used by the legacy containerId path below so the two
+          // routes cannot drift on inner-bounds arithmetic.
+          const bounds = shapeInnerBounds(shape);
           // Use the shape's anchor as the visual center when the text
           // element asks for centered alignment. Otherwise draw at the
           // inner-bounds top-left as the existing containerId path did.
-          // Compare against the SAFE anchor so a tampered input (NaN,
-          // Infinity, out-of-range) doesn't flip the layout flag.
-          const safe = safeAnchor(binding.shapeAnchor);
           const isCentered = (e.textAlign === "center" || e.textAlign === "right")
-            || (safe[0] !== 0.5 || safe[1] !== 0.5);
+            || (nx !== 0.5 || ny !== 0.5);
           const drawBounds = isCentered
             ? {...bounds, x: cx - bounds.w / 2, y: cy - bounds.h / 2}
             : bounds;
@@ -341,11 +363,16 @@ export const renderScene=(
       ctx.strokeStyle="#3b82f6";
       ctx.lineWidth=2;
       ctx.setLineDash([8,4]);
-      ctx.strokeRect(e.x-6,e.y-6,e.width+12,e.height+12);
+      ctx.strokeRect(e.x-HANDLE_PAD,e.y-HANDLE_PAD,e.width+2*HANDLE_PAD,e.height+2*HANDLE_PAD);
       ctx.setLineDash([]);
       // Corner handles (Excalidraw style): small filled squares at corners
-      const hs=8/zoom; // handle size in world units
-      const corners=[[e.x-6,e.y-6],[e.x+e.width+6-hs,e.y-6],[e.x-6,e.y+e.height+6-hs],[e.x+e.width+6-hs,e.y+e.height+6-hs]];
+      const hs=HANDLE_PX/zoom;
+      const corners=[
+        [e.x-HANDLE_PAD, e.y-HANDLE_PAD],
+        [e.x+e.width+HANDLE_PAD-hs, e.y-HANDLE_PAD],
+        [e.x-HANDLE_PAD, e.y+e.height+HANDLE_PAD-hs],
+        [e.x+e.width+HANDLE_PAD-hs, e.y+e.height+HANDLE_PAD-hs],
+      ];
       ctx.fillStyle="#3b82f6";
       ctx.strokeStyle="#fff";
       ctx.lineWidth=1.5;

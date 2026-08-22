@@ -34,7 +34,12 @@ describe("hand-tool pan implementation", () => {
     expect(panBranch![0]).not.toContain("scrollLeft");
   });
 
-  it("hitTestHandle은 HIT_MARGIN을 사용한다 (stroke ring 정확 hit-test)", () => {
-    expect(code).toMatch(/HIT_MARGIN/);
+  it("hitTestHandle은 HANDLE_STROKE_MARGIN을 사용한다 (stroke ring 정확 hit-test)", () => {
+    // (2026-08-22) F12 review round 4: HIT_MARGIN was renamed to
+    // HANDLE_STROKE_MARGIN and hoisted from Canvas.tsx into Renderer.ts
+    // (single source of truth for handle paint geometry). Source-level
+    // invariant: the renderer and the canvas's hit-test both consume the
+    // same margin constant.
+    expect(code).toMatch(/HANDLE_STROKE_MARGIN/);
   });
 });

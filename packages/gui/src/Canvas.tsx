@@ -1,14 +1,13 @@
 import {useEffect,useRef,useState} from "react";
 import type {Element} from "@archidraw/schema";
 import {bindingPointWorld,clampCanvasBackingStore,closestBindingPoint,hitBindingPoint,makeElement,MAX_CANVAS_DIM,pointInElement,type SceneStore,type Tool} from "./scene";
-import {renderScene} from "./Renderer";
+import {HANDLE_PAD, HANDLE_PX, HANDLE_STROKE_MARGIN, renderScene} from "./Renderer";
 import {boundingBoxFromElements} from "./tabs-state";
 import {useTextBinding} from "./useTextBinding";
 import {ColorPanel} from "./ColorPanel";
 
 type ResizeHandle = "nw"|"ne"|"sw"|"se";
 const MIN_SIZE = 4;
-const HANDLE_PX = 8;
 
 export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:(tool:Tool)=>void}){
   const ref=useRef<HTMLCanvasElement>(null);
@@ -120,27 +119,27 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
   //    Independent of `selected` — works on first click after the user draws.
   const hitTestHandle=(p:{x:number;y:number}):{handle:ResizeHandle;target:Element} | null => {
     const hs=HANDLE_PX/zoom;
-    const PAD=6; // matches Renderer.ts
-    // Renderer draws handles with `lineWidth = 1.5` in world units after the
-    // zoom transform, so the stroked outline extends ~0.75 world units
-    // OUTSIDE the fillRect on every side. Without this margin the visible
-    // painted handle sits outside the hit-test rectangle and clicks never
+    // HANDLE_PAD + HANDLE_STROKE_MARGIN come from Renderer.ts — see
+    // F12 review round 4. The renderer's `lineWidth = 1.5` world-unit
+    // stroke extends HANDLE_STROKE_MARGIN on every side of the
+    // fillRect, so the VISIBLE painted handle sits outside the fillRect
+    // by exactly HANDLE_STROKE_MARGIN. Without this margin the hit-test
+    // rectangle is smaller than the painted handle and clicks never
     // commit at zoom > ~1.0.
-    const HIT_MARGIN = 0.75;
     for(let i=elements.length-1;i>=0;i--){
       const el=elements[i];
       if(el.isDeleted) continue;
       if(el.type!=="rectangle"&&el.type!=="diamond"&&el.type!=="ellipse") continue;
       const left=el.x, top=el.y, right=el.x+(el.width||0), bottom=el.y+(el.height||0);
       const corners:Array<{h:ResizeHandle;cx:number;cy:number}>=[
-        {h:"nw",cx:left-PAD,cy:top-PAD},
-        {h:"ne",cx:right+PAD-hs,cy:top-PAD},
-        {h:"sw",cx:left-PAD,cy:bottom+PAD-hs},
-        {h:"se",cx:right+PAD-hs,cy:bottom+PAD-hs},
+        {h:"nw",cx:left-HANDLE_PAD,cy:top-HANDLE_PAD},
+        {h:"ne",cx:right+HANDLE_PAD-hs,cy:top-HANDLE_PAD},
+        {h:"sw",cx:left-HANDLE_PAD,cy:bottom+HANDLE_PAD-hs},
+        {h:"se",cx:right+HANDLE_PAD-hs,cy:bottom+HANDLE_PAD-hs},
       ];
       const c=corners.find(c=>
-        p.x>=c.cx-HIT_MARGIN&&p.x<=c.cx+hs+HIT_MARGIN&&
-        p.y>=c.cy-HIT_MARGIN&&p.y<=c.cy+hs+HIT_MARGIN,
+        p.x>=c.cx-HANDLE_STROKE_MARGIN&&p.x<=c.cx+hs+HANDLE_STROKE_MARGIN&&
+        p.y>=c.cy-HANDLE_STROKE_MARGIN&&p.y<=c.cy+hs+HANDLE_STROKE_MARGIN,
       );
       if(c) return {handle:c.h, target:el};
     }
