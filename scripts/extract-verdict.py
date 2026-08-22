@@ -232,6 +232,28 @@ def extract_from_comments(path: Path) -> str:
     return last_verdict
 
 
+def _is_fresh_enough(created_at: str, freshness_limit) -> bool:
+    """A06 review round 4 (2026-08-22): helper used by the comment-
+    fallback path to discard verdicts older than `freshness_limit`.
+
+    Returns True when `created_at` cannot be parsed (tolerate unknown
+    formats rather than silently dropping) OR when the parsed
+    timestamp is strictly greater than the cutoff. Returns False only
+    when a parseable, OLDER-than-cutoff timestamp shows the comment
+    is stale.
+    """
+    if not created_at:
+        return True
+    try:
+        from datetime import datetime, timezone
+        ts = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+    except (ValueError, ImportError):
+        return True
+    return ts >= freshness_limit
+
+
 def _auto_fetch_pr_comments_verdict() -> str:
     """Issue #625 auto-fetch: when no comments file is provided on the
     command line, fetch the PR's comments via the `gh` CLI and scan
@@ -336,6 +358,16 @@ def _auto_fetch_pr_comments_verdict() -> str:
     #   209825114 — claude[bot]         (the AI reviewer/security)
     #   285987422 — sh-ai-x (operator)  (override / re-verdict comments)
     TRUSTED_AUTHOR_IDS = {209825114, 285987422}
+    # Two-pass filter: first pass keeps only comments strictly newer
+    # than the cutoff (#244 stale-comment flap protection); if that
+    # pass yields zero comments, fall back to scanning ALL claude[bot]
+    # comments regardless of cutoff. The fallback recovers the verdict
+    # when the current run's agent failed to post a verdict comment
+    # (e.g. MiniMax envelope drop → post-summary default-approve →
+    # agent_ran=true but no fresh `Verdict:` comment was posted) —
+    # without the fallback, the gate would hard-fail with
+    # PARSE_FAILED even though the previous run produced a real
+    # verdict. Issue: PR #48 / runs after 32352323012.
     filtered: list[dict] = []
     for c in comments_all:
         if not isinstance(c, dict):
@@ -345,12 +377,53 @@ def _auto_fetch_pr_comments_verdict() -> str:
         if not isinstance(author_id, int) or author_id not in TRUSTED_AUTHOR_IDS:
             continue
         created_at = c.get("created_at", "") or c.get("createdAt", "")
-        if cutoff and created_at and created_at < cutoff:
-            continue
         body = c.get("body", "")
         if not isinstance(body, str):
             continue
-        filtered.append({"body": body, "createdAt": created_at})
+        if cutoff and created_at and created_at >= cutoff:
+            filtered.append({"body": body, "createdAt": created_at})
+    if not filtered and cutoff:
+        # Fallback: no comments newer than cutoff (typical when the
+        # agent's run did not post a verdict comment, e.g. envelope
+        # drop). Scan ALL trusted-author comments and take the LAST
+        # verdict. Stale-comment flap (#244) is bounded because the
+        # push that triggered THIS workflow run advanced updated_at,
+        # so any earlier-push verdict reflects a strictly older
+        # commit — the human gate (REVIEW_REQUIRED / CHANGES_REQUESTED
+        # on the PR) is the authoritative merge block, not the
+        # severity gate verdict.
+        #
+        # A06 review round 4 (2026-08-22) stale-verdict hardening: the
+        # previous fallback scanned ALL trusted-author comments without
+        # ANY time gate, which let a comment from a previous push's run
+        # leak back as "Changes Requested" on a current run that
+        # produced no fresh verdict. Add a 4-hour freshness cap so the
+        # fallback only fires for verdicts recent enough to plausibly
+        # reflect the current commit. Still bounded by
+        # `cutoff` (push-time freshness) for the primary path; the
+        # 4h cap is the secondary safety net for the case where the
+        # agent ran and skipped its own comment. The human gate
+        # remains the authoritative merge block (REVIEW_REQUIRED /
+        # CHANGES_REQUESTED on the PR).
+        from datetime import datetime, timedelta, timezone
+        freshness_limit = datetime.now(tz=timezone.utc) - timedelta(hours=4)
+        for c in comments_all:
+            if not isinstance(c, dict):
+                continue
+            user = c.get("user")
+            author_id = user.get("id") if isinstance(user, dict) else None
+            if not isinstance(author_id, int) or author_id not in TRUSTED_AUTHOR_IDS:
+                continue
+            created_at = c.get("created_at", "") or c.get("createdAt", "")
+            body = c.get("body", "")
+            if not isinstance(body, str):
+                continue
+            # ISO-8601 parse for the 4-hour freshness check via the
+            # pure `_is_fresh_enough` helper (covered by
+            # tests/test_extract_verdict.py::TestFreshnessFilter).
+            if not _is_fresh_enough(created_at, freshness_limit):
+                continue
+            filtered.append({"body": body, "createdAt": created_at})
     if not filtered:
         return ""
     try:

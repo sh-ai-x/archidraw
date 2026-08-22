@@ -73,3 +73,18 @@ yarn-error.log*
 # Local MCP server dev launchers
 packages/mcp-server/dev-*.mjs
 !packages/mcp-server/dist/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# dev-kit TDD guard runtime state
+.dev-kit/.tdd-cycle.json
+.dev-kit/.tdd-scope.json
+
+# Linear API key (tools/linear_pr_sync.py reads LINEAR_API_KEY; the literal
+# `.env.linear` filename is referenced by tools/linear_sync.py::_ENV_FILE_REL
+# and by hooks/linear-*.sh). Keep both the linear file and any future
+# `.env.X` developer files out of version control.
+.env.linear
+.env*.local

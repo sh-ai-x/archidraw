@@ -5,10 +5,12 @@ import {HelpModal} from "./HelpModal";
 import {createMemoryStore,type Tool} from "./scene";
 import {subscribeToSceneDeltas} from "./bridge-client";
 import {SceneTabs} from "./SceneTabs";
+import {tabsStore, useTabsStore} from "./tabs-state";
 import {SceneIO} from "./SceneIO";
 import {LayoutPanel} from "./LayoutPanel";
 import {SnapshotPanel} from "./SnapshotPanel";
-import type {Element, ExcalidrawScene} from "@archidraw/schema";
+import {silentAutoFix} from "./layout";
+import type {Element} from "@archidraw/schema";
 import "./styles.css";
 
 export function App(){
@@ -21,16 +23,14 @@ export function App(){
     seededRef.current=true;
     const els=store.getScene().elements;
     if(!els.length)return;
-    void import("./LayoutPanel")
-      .then(({silentAutoFix})=>{
-        const fixed=silentAutoFix(els);
-        if(fixed===els)return;
-        for(const e of store.queryElements({includeDeleted:true}))store.deleteElement(e.id);
-        for(const v of fixed)store.createElement(v);
-      })
-      // A10-1 (2026-08-19): surface dynamic-import failure rather than
-      // leaving a stale store when the chunk is missing or threw.
-      .catch((err)=>{console.error("[App] silentAutoFix bootstrap failed", err);});
+    try {
+      const fixed = silentAutoFix(els);
+      if (fixed === els) return;
+      for (const e of store.queryElements({includeDeleted:true})) store.deleteElement(e.id);
+      for (const v of fixed) store.createElement(v);
+    } catch (err) {
+      console.error("[App] silentAutoFix bootstrap failed", err);
+    }
   },[store]);
   const [tool,setTool]=useState<Tool>("select");
   const [showHelp,setShowHelp]=useState(false);
@@ -77,13 +77,20 @@ export function App(){
     return()=>unsub();
   },[store]);
 
-  // Called by SceneTabs when the active tab changes: rewrite store to match.
-  const handleTabActiveChange = (active: { tabs: Array<{id:string;name:string;scene:{elements:Element[]}}>; activeTabId: string | null }) => {
-    const activeTab = active.tabs.find(t => t.id === active.activeTabId);
+  // 🟠 major #3 follow-up (2026-08-20): subscribe to the activeTabId
+  // here instead of receiving it via the onActiveChange callback prop.
+  // App now owns the active-tab → store sync; SceneTabs is purely
+  // presentational (it only dispatches user actions back to
+  // tabsStore). Drops one of the three synchronizers the reviewer
+  // flagged.
+  const activeTabId = useTabsStore(s => s.activeTabId);
+  useEffect(() => {
+    if (!activeTabId) return;
+    const state = tabsStore.getState();
+    const activeTab = state.tabs.find(t => t.id === activeTabId);
     if (!activeTab) return;
-    const next = activeTab.scene.elements.filter(e => !e.isDeleted);
+    const next = activeTab.scene.elements.filter((e: Element) => !e.isDeleted);
     const current = store.queryElements({includeDeleted:true});
-    // Skip if already in sync (cheap id+position+size compare).
     if (current.length === next.length) {
       let same = true;
       for (let i = 0; i < current.length; i++) {
@@ -96,28 +103,13 @@ export function App(){
     }
     for (const el of store.queryElements({includeDeleted:true})) store.deleteElement(el.id);
     for (const el of next) store.createElement(structuredClone(el));
-  };
+  }, [activeTabId, store]);
 
-  // Called by SceneIO when loading a file as a new tab.
   const handleLoadAsTab = (name: string, elements: Element[]) => {
-    const id = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : Math.random().toString(36).slice(2));
-    // First, swap store to loaded elements.
+    tabsStore.createTab(name, elements);
     for (const el of store.queryElements({includeDeleted:true})) store.deleteElement(el.id);
     for (const el of elements) {
       if (el && !el.isDeleted) store.createElement(structuredClone(el));
-    }
-    // Then append a new tab record + set as active.
-    try {
-      const raw = localStorage.getItem("archidraw:tabs");
-      const tabs = raw ? JSON.parse(raw) as Array<{id:string;name:string;scene:ExcalidrawScene}> : [];
-      const tab = { id, name, scene: { type: "excalidraw" as const, version: 2, source: "archidraw", elements: store.getScene().elements, appState: {}, files: {} } };
-      tabs.push(tab);
-      localStorage.setItem("archidraw:tabs", JSON.stringify(tabs));
-      localStorage.setItem("archidraw:activeTab", id);
-    } catch {
-      // best effort
     }
   };
 
@@ -127,7 +119,6 @@ export function App(){
       <SceneTabs
         store={store}
         sceneVersion={sceneVersion}
-        onActiveChange={handleTabActiveChange}
         rightSlot={<><SceneIO store={store} onLoadAsTab={handleLoadAsTab}/><LayoutPanel store={store}/><SnapshotPanel/></>}
       />
       <section className="canvas-shell">

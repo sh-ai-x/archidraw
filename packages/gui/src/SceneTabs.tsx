@@ -1,105 +1,71 @@
 import {useEffect, useRef, useState, type JSX} from "react";
-import type {Element} from "@archidraw/schema";
-import type {SceneStore} from "./scene";
-import {
-  createTabsState,
-  loadTabsState,
-  saveTabsState,
-  type Tab,
-  type TabsState,
-} from "./tabs-state";
+import {tabsStore, useTabsStore, type Tab} from "./tabs-state";
 
 interface SceneTabsProps {
-  store: SceneStore;
-  /** Monotonically increasing on every store mutation (from App.tsx via store.onChange). */
+  store: {
+    getScene(): {elements: Array<{isDeleted?: boolean; id: string}>};
+  };
+  /**
+   * Monotonically increasing on every store mutation. SceneTabs
+   * forwards `store.getScene()` to `tabsStore.snapshotActiveTab`
+   * when this prop changes.
+   *
+   * 🟠 major #3 follow-up (2026-08-20): the previous SceneTabs
+   * owned three synchronizers — the forwarded handle (removed in
+   * F09), a sceneVersion effect (this prop), and an onActiveChange
+   * callback (removed in this revision). Drop onActiveChange by
+   * having App subscribe to the store's activeTabId directly;
+   * SceneTabs is now a near-pure presentational component.
+   */
   sceneVersion: number;
-  /** Called whenever the active tab changes; the parent should swap the store's contents to match. */
-  onActiveChange: (active: TabsState) => void;
   /** Where to render the inner Save/Load buttons next to the tabs. */
   rightSlot?: React.ReactNode;
 }
 
-const PERSIST_DEBOUNCE_MS = 300;
-
 /**
- * Multi-scene tab strip. Manages a list of named scenes backed by `localStorage`,
- * swap-tab behavior (rewriting the store contents when the active tab changes),
- * inline rename, and per-tab delete with a non-empty confirmation.
+ * Multi-scene tab strip. Reads tab state from `tabsStore` and
+ * dispatches user actions back to it. The only side-effects this
+ * component owns are:
+ *   1. first-run seed (copy store scene into the starter tab)
+ *   2. sceneVersion-driven snapshot into the active tab
+ * App subscribes to tabsStore.activeTabId directly for the
+ * active-tab reload path — SceneTabs no longer pushes upstream.
  */
-export function SceneTabs({store, sceneVersion, onActiveChange, rightSlot}: SceneTabsProps): JSX.Element {
-  const [state, setState] = useState<TabsState>(() => {
-    const loaded = loadTabsState();
-    if (loaded) return loaded;
-    return createTabsState("Untitled");
-  });
-
+export function SceneTabs({store, sceneVersion, rightSlot}: SceneTabsProps): JSX.Element {
+  const state = useTabsStore(s => s);
   const [editing, setEditing] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
-  const lastEmittedTabId = useRef<string | null>(null);
   const lastSavedVersion = useRef<number>(-1);
 
-  // Persist on a 300ms debounce.
-  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (persistTimer.current) clearTimeout(persistTimer.current);
-    persistTimer.current = setTimeout(() => saveTabsState(state), PERSIST_DEBOUNCE_MS);
-    return () => {
-      if (persistTimer.current) clearTimeout(persistTimer.current);
-    };
-  }, [state]);
-
-  // First-run only: copy current scene into the starter tab so the empty
-  // tab is hydrated with whatever was already in the localStorage scene.
+  // First-run only: copy current scene into the starter tab so the
+  // empty tab is hydrated with whatever was already in the
+  // localStorage scene.
   const seededRef = useRef(false);
   useEffect(() => {
     if (seededRef.current) return;
     seededRef.current = true;
-    setState(s => {
-      const idx = s.tabs.findIndex(t => t.id === s.activeTabId);
-      if (idx < 0) return s;
-      const tabs = s.tabs.slice();
-      tabs[idx] = { ...tabs[idx], scene: structuredClone(store.getScene()) };
-      return { ...s, tabs };
-    });
+    tabsStore.snapshotActiveTab(store.getScene());
     lastSavedVersion.current = sceneVersion;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-save: when sceneVersion bumps, snapshot the current store elements
-  // into the active tab. Using a version counter (rather than a no-deps effect)
-  // guarantees this runs once per logical mutation, not on every render.
+  // Auto-save: when sceneVersion bumps, snapshot the current store
+  // elements into the active tab. Using a version counter (rather
+  // than a no-deps effect) guarantees this runs once per logical
+  // mutation, not on every render.
   useEffect(() => {
     if (lastSavedVersion.current === sceneVersion) return;
     lastSavedVersion.current = sceneVersion;
-    const currentScene = store.getScene();
-    setState(s => {
-      const idx = s.tabs.findIndex(t => t.id === s.activeTabId);
-      if (idx < 0) return s;
-      const nextTabs = s.tabs.slice();
-      nextTabs[idx] = { ...nextTabs[idx], scene: structuredClone(currentScene) };
-      return { ...s, tabs: nextTabs };
-    });
+    tabsStore.snapshotActiveTab(store.getScene());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sceneVersion]);
 
-  // Emit to parent whenever the active tab changes so App.tsx can reload the store.
-  useEffect(() => {
-    const activeId = state.activeTabId;
-    if (!activeId || activeId === lastEmittedTabId.current) return;
-    const active = state.tabs.find(t => t.id === activeId);
-    if (active) {
-      lastEmittedTabId.current = activeId;
-      onActiveChange({ tabs: state.tabs, activeTabId: activeId });
-    }
-  }, [state.activeTabId, state.tabs, onActiveChange]);
-
   const handleNew = () => {
-    setState(s => createTabsState("Untitled", s));
+    tabsStore.newTab();
   };
 
   const handleSelect = (id: string) => {
-    if (id === state.activeTabId) return;
-    setState(s => ({ ...s, activeTabId: id }));
+    tabsStore.setActiveTab(id);
   };
 
   const handleStartRename = (tab: Tab) => {
@@ -111,10 +77,7 @@ export function SceneTabs({store, sceneVersion, onActiveChange, rightSlot}: Scen
     const next = draftName.trim();
     setEditing(null);
     if (!next || next === tab.name) return;
-    setState(s => ({
-      ...s,
-      tabs: s.tabs.map(t => t.id === tab.id ? { ...t, name: next } : t),
-    }));
+    tabsStore.renameTab(tab.id, next);
   };
 
   const handleCancelRename = () => {
@@ -127,17 +90,7 @@ export function SceneTabs({store, sceneVersion, onActiveChange, rightSlot}: Scen
     if (hasContent && !window.confirm(`Delete tab "${tab.name}"? This will discard its elements.`)) {
       return;
     }
-    setState(s => {
-      const idx = s.tabs.findIndex(t => t.id === tab.id);
-      if (idx < 0) return s;
-      const nextTabs = s.tabs.filter(t => t.id !== tab.id);
-      if (!nextTabs.length) return s;
-      let nextActive = s.activeTabId;
-      if (s.activeTabId === tab.id) {
-        nextActive = nextTabs[Math.max(0, idx - 1)].id;
-      }
-      return { tabs: nextTabs, activeTabId: nextActive };
-    });
+    tabsStore.deleteTab(tab.id);
   };
 
   return (

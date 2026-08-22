@@ -37,7 +37,32 @@ export const ExcalidrawElementSchema = z.discriminatedUnion("type", [
 
 export const AppStateSchema = z.object({ gridSize: z.number().nullable().optional(), viewBackgroundColor: z.string().optional() }).passthrough();
 export const ImageFileSchema = z.object({ mimeType: z.string(), id: z.string(), dataURL: z.string(), created: z.number(), lastRetrieved: z.number().optional() }).passthrough();
-export const ExcalidrawSceneSchema = z.object({ type: z.literal("excalidraw"), version: z.number(), source: z.string(), elements: z.array(ExcalidrawElementSchema), appState: AppStateSchema, files: z.record(z.string(), ImageFileSchema) }).passthrough();
+
+// (2026-08-22) N:N shape↔text binding collection. `kind` is required so
+// future binding kinds (`shape-arrow`, `arrow-endpoint`) can coexist in
+// the same `bindings[]` without a schema version bump. `.passthrough()`
+// is NOT needed on the binding object — we deliberately cap the kind
+// enum so unknown future kinds force a schema update, but we keep
+// `bindings` itself `.optional()` so old scenes without the field parse.
+export const ShapeTextBindingSchema = z.object({
+  id: z.string(),
+  kind: z.enum(["shape-text", "shape-arrow", "arrow-endpoint"]),
+  shapeId: z.string(),
+  textId: z.string(),
+  shapeAnchor: point,
+  textAnchor: point,
+  zHint: z.number().optional(),
+});
+
+export const ExcalidrawSceneSchema = z.object({
+  type: z.literal("excalidraw"),
+  version: z.number(),
+  source: z.string(),
+  elements: z.array(ExcalidrawElementSchema),
+  appState: AppStateSchema,
+  files: z.record(z.string(), ImageFileSchema),
+  bindings: z.array(ShapeTextBindingSchema).optional(),
+}).passthrough();
 
 export const CreateElementInputSchema = z.object({ element: ExcalidrawElementSchema });
 export const UpdateElementInputSchema = z.object({ id: z.string(), updates: z.record(z.string(), z.unknown()).default({}) });

@@ -29,9 +29,24 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "extract-verdict.py"
+
+# (2026-08-22) A06 review round 4: import the freshness helper directly
+# so the unit test below can exercise the pure function without
+# needing a live `gh` CLI or a hermetic fixture. The script imports
+# these from the same module; if the helper's contract drifts the
+# subprocess tests below still gate but the unit assertion below
+# fires first.
+import importlib.util as _importlib_util
+_spec = _importlib_util.spec_from_file_location(
+    "extract_verdict_module", SCRIPT
+)
+_ev_module = _importlib_util.module_from_spec(_spec)
+_spec.loader.exec_module(_ev_module)
+_is_fresh_enough = _ev_module._is_fresh_enough
 
 # Sentinel emitted by extract-verdict.py when the file existed with
 # parseable content but no assistant message contained a `Verdict:`
@@ -385,3 +400,124 @@ def test_comments_file_missing_returns_empty(tmp_path: Path) -> None:
     result = _run([str(target), str(tmp_path / "missing.json")])
     assert result.returncode == 0
     assert result.stdout == ""
+
+
+# ---------------------------------------------------------------------------
+# Issue #625 follow-up: auto-fetch PR comments when no comments file is
+# passed AND the file verdict is empty / PARSE_FAILED. When the cutoff
+# filter excludes every claude[bot] verdict (e.g. agent envelope drop —
+# the verdict comments are from previous runs, all earlier than
+# pull_request.updated_at), the script falls back to scanning ALL
+# trusted-author comments and returns the LAST verdict.
+#
+# These tests run against the live sh-ai-x/archidraw repo (the same
+# fixture the production review.yml uses), gated on `gh` being
+# authenticated. Skip when not — they're integration tests, not pure
+# unit tests. The sh-ai-x/archidraw owner runs them locally; CI can
+# add them behind an env-flag if a hermetic fixture is built.
+# ---------------------------------------------------------------------------
+
+
+def _gh_auth_available() -> bool:
+    """Best-effort check: `gh auth status` exits 0 when authenticated."""
+    import subprocess as _sp
+    try:
+        proc = _sp.run(
+            ["gh", "auth", "status", "--hostname", "github.com"],
+            capture_output=True, text=True, timeout=10,
+        )
+        return proc.returncode == 0
+    except (FileNotFoundError, _sp.TimeoutExpired, OSError):
+        return False
+
+
+def test_auto_fetch_falls_back_when_cutoff_excludes_all(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """PR #48 / runs after 32352323012: the agent's envelope drops the
+    assistant stream so the file verdict is PARSE_FAILED AND no fresh
+    `Verdict:` comment was posted in the current run. The cutoff
+    (`pull_request.updated_at`) excludes every earlier claude[bot]
+    verdict. The fallback pass must still recover the LAST verdict
+    so the gate shows a real review decision (e.g. "Changes Requested")
+    instead of hard-failing with PARSE_FAILED.
+
+    Skipped when `gh` is not authenticated (local-only unit tests
+    don't need network)."""
+    if not _gh_auth_available():
+        import pytest
+        pytest.skip("gh CLI not authenticated; auto-fetch integration test skipped")
+    event = tmp_path / "event.json"
+    event.write_text(
+        '{"pull_request": {"updated_at": "2099-01-01T00:00:00Z", '
+        '"created_at": "2020-01-01T00:00:00Z"}}',
+        encoding="utf-8",
+    )
+    target = tmp_path / "nope.json"  # does not exist → "" file verdict
+    env = {
+        "PR_NUMBER": "48",
+        "GITHUB_EVENT_PATH": str(event),
+    }
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), str(target)],
+        capture_output=True, text=True, check=False,
+        env={**__import__("os").environ, **env},
+        timeout=60,
+    )
+    assert result.returncode == 0
+    # PR #48's last claude[bot] verdict is "Changes Requested" — the
+    # fallback must surface it instead of returning PARSE_FAILED or
+    # empty stdout (which would let the gate default-to-Approve on
+    # empty verdict and silently miss the reviewer feedback).
+    assert result.stdout.strip() in {"Approve", "Blocked", "Changes Requested"}, (
+        f"auto-fetch fallback returned unexpected verdict: "
+        f"stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# A06 review round 4 (2026-08-22): the comment-fallback path uses
+# `_is_fresh_enough(created_at, freshness_limit)` to discard verdicts
+# from earlier pushes. A stale "Changes Requested" verdict from a
+# previous run would otherwise leak through and re-fail the gate even
+# after the agent dropped its verdict on the current run. Pure unit
+# tests for the helper.
+# ---------------------------------------------------------------------------
+
+
+class TestFreshnessFilter:
+    """Pins the freshness contract so a future edit cannot widen the
+    stale-verdict window without a corresponding test churn."""
+
+    NOW = datetime(2026, 8, 22, 12, 0, 0, tzinfo=timezone.utc)
+    FRESHNESS_LIMIT = NOW - timedelta(hours=4)
+
+    def test_현재_시각_이내는_fresh로_판정된다(self) -> None:
+        ts = (self.NOW - timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
+        assert _is_fresh_enough(ts, self.FRESHNESS_LIMIT) is True
+
+    def test_정확히_4시간_이내는_stale로_판정된다(self) -> None:
+        ts = (self.FRESHNESS_LIMIT - timedelta(seconds=1)).isoformat().replace("+00:00", "Z")
+        assert _is_fresh_enough(ts, self.FRESHNESS_LIMIT) is False
+
+    def test_4시간_이전_시각은_stale로_판정된다(self) -> None:
+        ts = (self.NOW - timedelta(hours=8)).isoformat().replace("+00:00", "Z")
+        assert _is_fresh_enough(ts, self.FRESHNESS_LIMIT) is False
+
+    def test_빈_문자열은_fresh로_판정된다(self) -> None:
+        # Tolerate missing timestamp rather than silently dropping —
+        # the caller can decide via other signals (cutoff, author id).
+        assert _is_fresh_enough("", self.FRESHNESS_LIMIT) is True
+
+    def test_파싱_실패_문자열은_fresh로_판정된다(self) -> None:
+        # Tolerate unknown formats; the helper returns True so the
+        # comment flows through to the existing author-id / cutoff
+        # gates.
+        assert _is_fresh_enough("not-an-iso-8601-timestamp", self.FRESHNESS_LIMIT) is True
+
+    def test_Z_접미사_UTC_타임스탬프를_처리한다(self) -> None:
+        # claude[bot] / github-actions[bot] timestamps use the
+        # Python json.dumps-serialized style: 2026-08-22T08:00:00Z.
+        ts = (self.NOW - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+        assert _is_fresh_enough(ts, self.FRESHNESS_LIMIT) is True
+

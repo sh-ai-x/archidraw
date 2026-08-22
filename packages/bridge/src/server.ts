@@ -90,6 +90,22 @@ export class BridgeServer implements BridgeTransport {
   }
 
   private readPublish(request: IncomingMessage, response: ServerResponse): void {
+    // A01/A06 review round 4 (2026-08-22): OPTIONS preflight rejects
+    // unknown origins, but a non-browser caller (curl, malware, a
+    // browser extension injecting from the GUI tab) bypasses the
+    // preflight by sending Origin-bearing POSTs without a CORS probe
+    // OR sending Origin-less POSTs (loopback tools). The bridge is
+    // loopback-only by design, but accept-without-origin is too
+    // permissive for any process with a valid GUI origin header.
+    // Enforce: if Origin header IS present, it MUST be in the
+    // allowlist. Missing Origin (curl, native clients) is still
+    // permitted — that's the documented loopback contract.
+    const origin = request.headers.origin;
+    if (origin && !ALLOWED_ORIGIN.has(origin)) {
+      response.writeHead(403, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "Origin not allowed" }));
+      return;
+    }
     // A06-2 (2026-08-19): cap body size so a local-process flood can't
     // allocate unbounded memory via `body += chunk` on POST /publish.
     // 1 MiB is well above any legitimate scene delta (a 32K-element
