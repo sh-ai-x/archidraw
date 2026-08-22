@@ -101,7 +101,7 @@ export function silentAutoFix(elsIn: ElementForLayout[]): ElementForLayout[] {
       changed = true;
       // Find the container (parent rectangle) that contains the text's center
       for (const c of els) {
-        if (c === e || c.isDeleted || c.type === "text" || c.type === "arrow" || c.type === "line") continue;
+        if (c.isDeleted || c.type === "text" || c.type === "arrow" || c.type === "line") continue;
         const cx1 = c.x, cy1 = c.y, cx2 = c.x + (c.width || 0), cy2 = c.y + (c.height || 0);
         const tcx = e.x + e.width / 2, tcy = e.y + (e.height || 24) / 2;
         if (tcx >= cx1 && tcx <= cx2 && tcy >= cy1 && tcy <= cy2) {
@@ -144,7 +144,7 @@ export function silentAutoFix(elsIn: ElementForLayout[]): ElementForLayout[] {
         e.x = Math.round(oldCenter - newW / 2);
         changed = true;
         for (const c of els) {
-          if (c === e || c.isDeleted || c.type === "text" || c.type === "arrow" || c.type === "line") continue;
+          if (c.isDeleted || c.type === "text" || c.type === "arrow" || c.type === "line") continue;
           const cx1 = c.x, cy1 = c.y, cx2 = c.x + (c.width || 0), cy2 = c.y + (c.height || 0);
           const tcx = e.x + e.width / 2, tcy = e.y + (e.height || 24) / 2;
           if (tcx >= cx1 && tcx <= cx2 && tcy >= cy1 && tcy <= cy2) {
