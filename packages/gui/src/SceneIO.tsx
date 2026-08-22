@@ -82,7 +82,13 @@ export function SceneIO({
           if (el && !el.isDeleted) store.createElement(el);
         }
       } catch (e) {
-        console.error("[SceneIO] failed to parse load file", e);
+        // A09 review round 4 (2026-08-22): log only the error type and
+        // message, not the full Error object. Error.message can embed
+        // data from the offending payload (e.g. a 25MB scene file the
+        // user just uploaded) — shipping that to console exposes the
+        // payload to anyone with browser devtools access on this host.
+        const err = e instanceof Error ? e : new Error(String(e));
+        console.error("[SceneIO] failed to parse load file:", err.name, "-", err.message);
         window.alert("Failed to parse scene file. Make sure it's an Excalidraw JSON.");
       }
     };

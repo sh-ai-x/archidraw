@@ -18,8 +18,18 @@
 
 import type {Element, ExcalidrawScene, ShapeTextBinding, Point} from "@archidraw/schema";
 import type {SceneStore} from "./scene";
+import {assertSceneShape} from "./scene";
 
 const SCENE_KEY = "archidraw:scene";
+
+/**
+ * (2026-08-22) A06 review round 4: cap the input-shape-id sets in
+ * `reparentTextBindings`. The previous unbounded iteration let a
+ * caller pass `newShapeIds.length === 10_000_000` and force the
+ * materialization + Set + JSON.stringify → OOM. Match the same
+ * conservative upper bound SceneIO + assertSceneShape use.
+ */
+const REPARENT_MAX_IDS = 25000;
 
 // ID mint: prefer crypto.randomUUID where present; fall back to a
 // short random suffix so unit tests in a jsdom environment without
@@ -57,9 +67,15 @@ const readScene = (store: SceneStore): ExcalidrawScene => {
   if (raw) {
     try {
       const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object" && Array.isArray(parsed.elements)) {
-        return parsed as ExcalidrawScene;
-      }
+      // A08/A10 review round 4 (2026-08-22): the previous localStorage
+      // fallback only checked `Array.isArray(parsed.elements)`, which
+      // a tampered payload satisfies with a million-element array
+      // while bypassing MAX_ELEMENTS / MAX_PARSE_DEPTH / element-shape
+      // guards. Run assertSceneShape so every hydration path enforces
+      // the same caps SceneIO uses. A failing shape is replaced with an
+      // empty scene (matches SceneIO's user-facing recovery).
+      const check = assertSceneShape(parsed);
+      if (check.ok) return parsed as ExcalidrawScene;
     } catch {
       /* fall through */
     }
@@ -71,6 +87,14 @@ const readScene = (store: SceneStore): ExcalidrawScene => {
  *  a localStorage fallback for stores that don't expose bindings yet.
  *  Returns true on a successful write. */
 const writeScene = (store: SceneStore, next: ExcalidrawScene): boolean => {
+  // A08 review round 4 (2026-08-22): the previous writeScene wrote
+  // `next` straight through to localStorage / updateBindings without
+  // a shape check, so a caller could push a 10M-element scene through
+  // the bindings helper and bypass assertSceneShape entirely. Run
+  // assertSceneShape here too. On failure, refuse to write (returns
+  // false) and let the caller fall back to a no-op.
+  const check = assertSceneShape(next);
+  if (!check.ok) return false;
   const s = store as SceneStoreWithBindings;
   if (typeof s.updateBindings === "function") {
     s.updateBindings(next.bindings || []);
@@ -176,6 +200,14 @@ export const reparentTextBindings = (
   oldShapeIds: string[],
   newShapeIds: string[],
 ): void => {
+  // A06 review round 4 (2026-08-22): cap the input ids. Unlimited
+  // `newShapeIds.length` previously let a tampered caller OOM the
+  // browser tab on `Set` materialization + JSON.stringify. Side
+  // benefit: also bounds the JSON.stringify on the writeScene path
+  // when MAX_BINDINGS is bypassed by a misbehaving caller.
+  if (oldShapeIds.length > REPARENT_MAX_IDS || newShapeIds.length > REPARENT_MAX_IDS) {
+    return;
+  }
   const scene = readScene(store);
   const oldSet = new Set(oldShapeIds);
   const newSet = new Set(newShapeIds);

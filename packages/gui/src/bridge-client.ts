@@ -9,6 +9,41 @@ const deltaListeners = new Set<SceneDeltaListener>();
 const sceneListeners = new Set<SceneListener>();
 let currentScene: unknown = null;
 
+/**
+ * A10 review round 4 (2026-08-22): the previous bridge-client
+ * reconnected with a fixed 2000ms `setTimeout` forever. A bridge
+ * process that stays down (e.g. user closed the daemon) hammered
+ * the loopback port at 0.5 Hz indefinitely, leaking memory and
+ * log-spamming. Cap with exponential backoff (2s, 4s, 8s, ..., 30s)
+ * and circuit-break after 5 consecutive failures so the failure
+ * signature is visible in the dev console without burning the loop.
+ */
+let reconnectAttempt = 0;
+const RECONNECT_MAX_MS = 30_000;
+const RECONNECT_CIRCUIT_BREAKER = 5;
+let circuitBroken = false;
+function scheduleReconnect(): void {
+  if (circuitBroken) return;
+  reconnectAttempt += 1;
+  if (reconnectAttempt > RECONNECT_CIRCUIT_BREAKER) {
+    circuitBroken = true;
+    console.warn(
+      `[bridge-client] circuit-broken after ${RECONNECT_CIRCUIT_BREAKER} consecutive failures; ` +
+      `retry the page (or call resetReconnect()) to recover.`,
+    );
+    return;
+  }
+  const delay = Math.min(
+    RECONNECT_MAX_MS,
+    2_000 * Math.pow(2, reconnectAttempt - 1),
+  );
+  setTimeout(connect, delay);
+}
+export function resetReconnect(): void {
+  reconnectAttempt = 0;
+  circuitBroken = false;
+}
+
 function notifyDeltas(delta: unknown) {
   for (const l of deltaListeners) l(delta);
 }
@@ -19,30 +54,44 @@ function notifyScene(scene: unknown) {
 }
 
 function connect() {
-  if (es) return;
+  if (es || circuitBroken) return;
   try {
     es = new EventSource(SSE_URL);
+    es.addEventListener("open", () => { reconnectAttempt = 0; });
     es.addEventListener("scene-delta", (ev) => {
       try {
         const delta = JSON.parse((ev as MessageEvent).data);
         notifyDeltas(delta);
-      } catch (e) { console.error("[bridge-client] parse error", e); }
+      } catch (e) {
+        // A09 review round 4: log only the error type + message, not
+        // the full Error object. Error.message can embed arbitrary
+        // payload snippets from the offending SSE frame, exposing
+        // them via browser devtools.
+        const err = e instanceof Error ? e : new Error(String(e));
+        console.error("[bridge-client] parse error:", err.name, "-", err.message);
+      }
     });
     es.addEventListener("scene", (ev) => {
       try {
         const scene = JSON.parse((ev as MessageEvent).data);
         notifyScene(scene);
-      } catch (e) { console.error("[bridge-client] scene parse error", e); }
+      } catch (e) {
+        const err = e instanceof Error ? e : new Error(String(e));
+        console.error("[bridge-client] scene parse error:", err.name, "-", err.message);
+      }
     });
     es.onerror = () => {
-      // Auto-reconnect after 2s
+      // Auto-reconnect with exponential backoff (capped). The previous
+      // fixed-2000ms reconnect loop was an unbounded retry primitive
+      // — A10 review round 4 finding.
       es?.close();
       es = null;
-      setTimeout(connect, 2000);
+      scheduleReconnect();
     };
   } catch (e) {
-    console.error("[bridge-client] connect failed", e);
-    setTimeout(connect, 2000);
+    const err = e instanceof Error ? e : new Error(String(e));
+    console.error("[bridge-client] connect failed:", err.name, "-", err.message);
+    scheduleReconnect();
   }
 }
 

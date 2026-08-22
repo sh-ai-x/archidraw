@@ -296,11 +296,18 @@ export const renderScene=(
         const arrowAny = e as unknown as {startBinding?: any; endBinding?: any};
         const isArrowSelected = selected === e.id;
         const drawBindingDot = (binding: any) => {
-          if (!binding || !binding.fixedPoint) return;
+          if (!binding) return;
+          // F07-RC2 (2026-08-22): trust-boundary on fixedPoint too — see
+          // security round 4 finding "binding.fixedPoint destructured
+          // without safeAnchor coercion". Mirrors the shapeAnchor guard.
+          // A tampered ArrowTool binding could feed NaN / Infinity here
+          // and produce a blank or off-bbox dot; coerce to a safe
+          // unit-square pair before the destructure.
+          if (!binding.fixedPoint) return;
           const target = elements.find(el => el.id === binding.elementId && !el.isDeleted);
           if (!target) return;
           const w = target.width || 0, h = target.height || 0;
-          const [nx, ny] = binding.fixedPoint;
+          const [nx, ny] = safeAnchor(binding.fixedPoint);
           const bx2 = target.x + nx * w;
           const by2 = target.y + ny * h;
           const r = 4 / zoom;
