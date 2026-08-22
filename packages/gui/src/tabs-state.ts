@@ -1,3 +1,5 @@
+import {useSyncExternalStore} from "react";
+
 import type {Element, ExcalidrawScene} from "@archidraw/schema";
 import {assertSceneShape} from "./scene";
 
@@ -261,12 +263,7 @@ export const tabsStore: TabsStoreApi = {
  * store's notify calls. Selector equality defaults to Object.is.
  */
 export const useTabsStore = <T,>(selector: (s: TabsState) => T): T => {
-  // useSyncExternalStore is imported lazily so this module stays
-  // usable in non-React contexts (e.g. unit tests for tabsStore
-  // directly).
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const React = require("react") as typeof import("react");
-  return React.useSyncExternalStore(
+  return useSyncExternalStore(
     tabsStore.subscribe,
     () => selector(tabsStore.getState()),
     () => selector(tabsStore.getState()),

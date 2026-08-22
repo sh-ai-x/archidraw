@@ -18,6 +18,7 @@
 
 import {makeElement, pointInElement, type Element, type SceneStore, type Tool} from "./scene";
 import type {Element as SchemaElement} from "@archidraw/schema";
+import {addBinding} from "./bindings";
 
 export type LooseElement = Pick<Element, "id" | "type" | "x" | "y" | "width" | "height" | "isDeleted">;
 
@@ -94,17 +95,27 @@ export const bindTextAt = (
     };
   }
   // F03: preserve non-text bindings when writing back.
+  //
+  // (2026-08-22) Final shape-text positioning rule from the user's last
+  // message: text renders at the LEFT edge of the shape's inner bounds,
+  // VERTICALLY CENTERED. The renderer resolves inner bounds via
+  // resolveContainerBounds; textAlign + verticalAlign drive placement,
+  // so the metadata x/y is just the bbox top-left for every shape type.
   const id = newId();
+  const txtX = shape.x;
+  const txtY = shape.y;
+  const txtAlign = "left" as const;
+  const txtVAlign = "middle" as const;
   const txt = {
-    ...makeElement("text", shape.x, shape.y, shape.width, shape.height),
+    ...makeElement("text", txtX, txtY, shape.width, shape.height),
     id,
     text: content,
     originalText: content,
     containerId: shape.id,
     width: shape.width,
     height: shape.height,
-    textAlign: "left" as const,
-    verticalAlign: "top" as const,
+    textAlign: txtAlign,
+    verticalAlign: txtVAlign,
   } as unknown as SchemaElement;
   const merged = {
     ...shape,
@@ -130,6 +141,16 @@ export const applyBindResult = (
   }
   store.updateElement(result.shape.id, {boundElements: (result.shape as unknown as {boundElements?: unknown}).boundElements as SchemaElement["boundElements"]} as Partial<Element>);
   store.createElement(result.text);
+  // (2026-08-22) N:N binding collection: also create a ShapeTextBinding
+  // edge so the renderer can iterate multiple bindings for one text.
+  // addBinding is idempotent — re-runs of bindTextAt that already
+  // produced an edge for this (shape, text) pair return null silently.
+  addBinding(store, {
+    shapeId: result.shape.id,
+    textId: result.text.id,
+    shapeAnchor: [0.5, 0.5],
+    textAnchor: [0.5, 0.5],
+  });
   return result.text.id;
 };
 

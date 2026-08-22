@@ -18,6 +18,38 @@ export type StrokeStyle = "solid" | "dashed" | "dotted";
 export type TextAlign = "left" | "center" | "right";
 export type VerticalAlign = "top" | "middle" | "bottom";
 
+// ─────────────────────────────────────────────────────────────────────────
+// N:N binding collection (2026-08-22)
+//
+// The original `TextElement.containerId` (single back-pointer) is 1:1 —
+// the same text could belong to exactly one shape, and a shape could
+// carry exactly one bound text. Replacing that with a top-level
+// `bindings[]` edge collection lets one text participate in many
+// shape↔text edges simultaneously. `kind` lets us add
+// `shape-arrow` / `arrow-endpoint` later without another schema
+// version bump; consumers filter on `kind` when they need to.
+// ─────────────────────────────────────────────────────────────────────────
+export const BINDING_KINDS = [
+  "shape-text",
+  "shape-arrow",
+  "arrow-endpoint",
+] as const;
+
+export type BindingKind = (typeof BINDING_KINDS)[number];
+
+export interface ShapeTextBinding {
+  id: string;
+  kind: BindingKind;
+  shapeId: string;
+  textId: string;
+  /** where on the shape's bbox [0,1], default [0.5, 0.5] (center) */
+  shapeAnchor: Point;
+  /** where on the text's bbox [0,1], default [0.5, 0.5] */
+  textAnchor: Point;
+  /** z-hint for layering, default 0 */
+  zHint?: number;
+}
+
 export interface BoundElement {
   id: string;
   type: "arrow" | "text";
@@ -138,5 +170,5 @@ export interface ExcalidrawScene {
   elements: Element[];
   appState: AppState;
   files: Record<string, ImageFile>;
+  bindings?: ShapeTextBinding[];
 }
-

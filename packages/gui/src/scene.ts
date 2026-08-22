@@ -1,8 +1,85 @@
-import type {Element, ExcalidrawScene, Point} from "@archidraw/schema";
+import type {Element, ExcalidrawScene, Point, ShapeTextBinding} from "@archidraw/schema";
 export type Tool="hand"|"select"|"rectangle"|"ellipse"|"diamond"|"arrow"|"line"|"text"|"erase";
 export type ElementPatch=Partial<Element> & Record<string, unknown>;
-export interface SceneStore {getScene():ExcalidrawScene; queryElements(opts?:{includeDeleted?:boolean}):Element[]; updateElement(id:string, updates:ElementPatch):void; deleteElement(id:string):void; createElement(element:Element):void; undo():boolean; redo():boolean; canUndo():boolean; canRedo():boolean}
+export interface SceneStore {
+  getScene():ExcalidrawScene;
+  queryElements(opts?:{includeDeleted?:boolean}):Element[];
+  updateElement(id:string, updates:ElementPatch):void;
+  deleteElement(id:string):void;
+  createElement(element:Element):void;
+  undo():boolean;
+  redo():boolean;
+  canUndo():boolean;
+  canRedo():boolean;
+  // (2026-08-22) N:N shape↔text binding collection. Optional in the
+  // type so legacy callers compile; missing methods fall back to a
+  // localStorage write in bindings.ts.
+  updateBindings?(bindings: ShapeTextBinding[]): void;
+  replaceScene?(scene: ExcalidrawScene): void;
+}
 const KEY="archidraw:scene";
+// ─────────────────────────────────────────────────────────────────────────
+// Task E — point-to-shape binding helpers (2026-08-21). Snap to the 5 cardinal
+// anchor points (top / right / bottom / left / center) of a shape so an
+// arrow-tool drag from one shape to another can produce a real
+// startBinding / endBinding pair instead of a free-floating endpoint.
+// ─────────────────────────────────────────────────────────────────────────
+export type BindingPoint = "top" | "right" | "bottom" | "left" | "center";
+export const BINDING_POINTS: BindingPoint[] = ["top", "right", "bottom", "left", "center"];
+
+/** Convert a binding-point name + element into a world-space {x, y}. */
+export const bindingPointWorld = (el: Element, p: BindingPoint): {x: number; y: number} => {
+  const w = el.width || 0;
+  const h = el.height || 0;
+  switch (p) {
+    case "top":    return { x: el.x + w / 2, y: el.y };
+    case "right":  return { x: el.x + w,     y: el.y + h / 2 };
+    case "bottom": return { x: el.x + w / 2, y: el.y + h };
+    case "left":   return { x: el.x,         y: el.y + h / 2 };
+    case "center": return { x: el.x + w / 2, y: el.y + h / 2 };
+  }
+};
+
+/** Inverse — given a world-space {x, y} and an element, return the closest
+ *  binding point name AND its normalized [nx, ny] on the element bounding
+ *  box (in [0,1]). Used to set Binding.fixedPoint. */
+export const closestBindingPoint = (el: Element, x: number, y: number): {point: BindingPoint; fixedPoint: Point} => {
+  const w = el.width || 0;
+  const h = el.height || 0;
+  if (w <= 0 || h <= 0) return { point: "center", fixedPoint: [0.5, 0.5] };
+  const candidates: Array<{point: BindingPoint; pos: {x:number;y:number}; fixedPoint: Point}> = [
+    { point: "top",    pos: bindingPointWorld(el, "top"),    fixedPoint: [0.5, 0]   },
+    { point: "right",  pos: bindingPointWorld(el, "right"),  fixedPoint: [1,   0.5] },
+    { point: "bottom", pos: bindingPointWorld(el, "bottom"), fixedPoint: [0.5, 1]   },
+    { point: "left",   pos: bindingPointWorld(el, "left"),   fixedPoint: [0,   0.5] },
+    { point: "center", pos: bindingPointWorld(el, "center"), fixedPoint: [0.5, 0.5] },
+  ];
+  let best = candidates[0];
+  let bestD = Math.hypot(x - best.pos.x, y - best.pos.y);
+  for (let i = 1; i < candidates.length; i++) {
+    const d = Math.hypot(x - candidates[i].pos.x, y - candidates[i].pos.y);
+    if (d < bestD) { best = candidates[i]; bestD = d; }
+  }
+  return { point: best.point, fixedPoint: best.fixedPoint };
+};
+
+/** Find the topmost element whose binding-point snap zone contains (x, y).
+ *  Snap tolerance scales with the element's diagonal so small shapes still
+ *  have a generous snap zone. */
+export const hitBindingPoint = (elements: Element[], x: number, y: number, tolerance = 16): {element: Element; point: BindingPoint} | null => {
+  for (let i = elements.length - 1; i >= 0; i--) {
+    const el = elements[i];
+    if(el.isDeleted) continue;
+    if (el.type === "text" || el.type === "arrow" || el.type === "line") continue;
+    for (const p of BINDING_POINTS) {
+      const bp = bindingPointWorld(el, p);
+      const diag = Math.hypot(el.width || 0, el.height || 0);
+      const tol = Math.max(tolerance, diag * 0.15);
+      if (Math.hypot(bp.x - x, bp.y - y) <= tol) return { element: el, point: p };
+    }
+  }
+  return null;
+};
 export const emptyScene=():ExcalidrawScene=>({type:"excalidraw",version:2,source:"archidraw",elements:[],appState:{},files:{}});
 // A06-2 / A08-5 review (2026-08-20): previous loadScene only checked
 // `type === "excalidraw"` and `Array.isArray(elements)`, which a
@@ -17,7 +94,12 @@ export const emptyScene=():ExcalidrawScene=>({type:"excalidraw",version:2,source
 export const loadScene=():ExcalidrawScene=>{try{const raw=localStorage.getItem(KEY);if(raw){const parsed=JSON.parse(raw);if(parsed&&assertSceneShape(parsed).ok)return parsed as ExcalidrawScene}}catch{}return emptyScene()};
 export const saveScene=(scene:ExcalidrawScene)=>{try{localStorage.setItem(KEY,JSON.stringify(scene))}catch{}};
 export const pointInElement=(element:Element,x:number,y:number,tolerance=8)=>{const left=Math.min(element.x,element.x+element.width)-tolerance;const top=Math.min(element.y,element.y+element.height)-tolerance;const right=Math.max(element.x,element.x+element.width)+tolerance;const bottom=Math.max(element.y,element.y+element.height)+tolerance;if(element.type!=="arrow"&&element.type!=="line")return x>=left&&x<=right&&y>=top&&y<=bottom;const points=element.points.map(([px,py])=>[element.x+px,element.y+py] as Point);return points.some(([px,py])=>Math.hypot(x-px,y-py)<=tolerance)||points.slice(1).some(([a,b],i)=>{const [c,d]=points[i];const len=Math.hypot(a-c,b-d)||1;return Math.abs((b-d)*x-(a-c)*y+a*d-b*c)/len<=tolerance&&x>=Math.min(a,c)-tolerance&&x<=Math.max(a,c)+tolerance&&y>=Math.min(b,d)-tolerance&&y<=Math.max(b,d)+tolerance})};
-export const makeElement=(type:Exclude<Tool,"select"|"erase">,x:number,y:number,w:number,h:number,seed=Date.now()):Element=>{const base={id:crypto.randomUUID(),type,x,y,width:w,height:h,angle:0,strokeColor:"#1f2937",backgroundColor:"transparent",fillStyle:"solid",strokeWidth:2,strokeStyle:"solid",roughness:1,opacity:100,groupIds:null,frameId:null,index:null,roundness:null,seed,versionNonce:seed,isDeleted:false,boundElements:null,updated:Date.now(),link:null,locked:false} as const;if(type==="arrow"||type==="line")return {...base,type,points:[[0,0],[w,h]],startBinding:null,endBinding:null,startArrowhead:type==="arrow"?null:null,endArrowhead:type==="arrow"?"arrow":null} as Element;if(type==="text")return {...base,type,width:Math.max(w,80),height:28,fontSize:20,fontFamily:1,text:"Text",textAlign:"left",verticalAlign:"top",containerId:null,originalText:"Text",lineHeight:1.2,baseline:20} as Element;return {...base,type} as Element};
+export const makeElement=(type:Exclude<Tool,"select"|"erase">,x:number,y:number,w:number,h:number,seed=Date.now()):Element=>{const base={id:crypto.randomUUID(),type,x,y,width:w,height:h,angle:0,strokeColor:"#1f2937",backgroundColor:"transparent",fillStyle:"solid",strokeWidth:2,strokeStyle:"solid",roughness:1,opacity:100,groupIds:null,frameId:null,index:null,roundness:null,seed,versionNonce:seed,isDeleted:false,boundElements:null,updated:Date.now(),link:null,locked:false} as const;if(type==="arrow"||type==="line")return {...base,type,points:[[0,0],[w,h]],startBinding:null,endBinding:null,startArrowhead:type==="arrow"?null:null,endArrowhead:type==="arrow"?"arrow":null} as Element;if(type==="text")return {...base,type,width:Math.max(w,80),height:28,fontSize:20,fontFamily:1,text:"Text",textAlign:"left",verticalAlign:"top",containerId:null,originalText:"Text",lineHeight:1.2,baseline:20} as Element;
+  // (2026-08-22) Newly drawn rectangle / diamond / ellipse get a light pastel
+  // fill so they are visibly colored against the white canvas. Text, arrow,
+  // and line keep `transparent` (set on `base`) so they render without a
+  // colored box.
+  return {...base,type,backgroundColor:"#fde68a"} as Element};
 
 /**
  * Cap the BACKING STORE (cssW*dpr) of a Canvas to `maxDim` pixels on the
@@ -168,5 +250,9 @@ export const createMemoryStore=(initial=loadScene(), onChange:()=>void=()=>{}):S
     redo:()=>{if(!redoStack.length)return false;history.push(structuredClone(scene));restore(redoStack.pop()!);return true},
     canUndo:()=>history.length>0,
     canRedo:()=>redoStack.length>0,
+    // (2026-08-22) N:N binding helpers — snapshot before mutating so
+    // they participate in the same undo/redo history as element ops.
+    updateBindings:(bindings)=>{snapshot();scene={...scene,bindings};persist()},
+    replaceScene:(next)=>{snapshot();scene=structuredClone(next);persist()},
   };
 };

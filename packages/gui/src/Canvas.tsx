@@ -1,9 +1,10 @@
 import {useEffect,useRef,useState} from "react";
 import type {Element} from "@archidraw/schema";
-import {clampCanvasBackingStore,makeElement,MAX_CANVAS_DIM,pointInElement,type SceneStore,type Tool} from "./scene";
+import {bindingPointWorld,clampCanvasBackingStore,closestBindingPoint,hitBindingPoint,makeElement,MAX_CANVAS_DIM,pointInElement,type SceneStore,type Tool} from "./scene";
 import {renderScene} from "./Renderer";
 import {boundingBoxFromElements} from "./tabs-state";
 import {useTextBinding} from "./useTextBinding";
+import {ColorPanel} from "./ColorPanel";
 
 type ResizeHandle = "nw"|"ne"|"sw"|"se";
 const MIN_SIZE = 4;
@@ -17,9 +18,17 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
   const [hovering,setHovering]=useState(false);
   const [marquee,setMarquee]=useState<{x1:number;y1:number;x2:number;y2:number}|null>(null);
   const [multiSel,setMultiSel]=useState<string[]>([]);
-  const drag=useRef<{x:number;y:number;id?:string;start?:Element;space?:boolean;gesture:"none"|"drag-element"|"resize";handle?:ResizeHandle}|null>(null);
+  const drag=useRef<{x:number;y:number;pdownX?:number;pdownY?:number;id?:string;start?:Element;space?:boolean;gesture:"none"|"drag-element"|"resize";handle?:ResizeHandle}|null>(null);
   const pointerDownPos=useRef<{x:number;y:number;hit:Element|null}|null>(null);
   const DRAGGING_THRESHOLD=3;
+  // Task E — pendingBinding tracks an in-flight arrow-tool drag anchored
+  // to one shape's binding point. The other end is rubber-banded to the
+  // current pointer position (pendingBindingPreview) and finalized on
+  // pointerup, with another shape's binding point if the cursor is
+  // within snap tolerance at that moment.
+  const pendingBinding=useRef<{startPoint:{x:number;y:number}; element:Element; fixedPoint:any}|null>(null);
+  const [pendingBindingPreview,setPendingBindingPreview]=useState<{x:number;y:number}|null>(null);
+  const [hoverBinding,setHoverBinding]=useState(false);
   const elements=store.queryElements();
   // F10: extract the text-in-shape binding flow into useTextBinding so
   // the JSX handlers below stay one-liners and the predicate logic
@@ -46,12 +55,20 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
       const {w, h} = clampCanvasBackingStore({cssW, cssH, maxDim: MAX_CANVAS_DIM, dpr});
       c.width=Math.round(w*dpr);
       c.height=Math.round(h*dpr);
-      renderScene(c,elements,zoom,pan,selected,marquee,multiSel);
+      // Task E — feed the in-flight arrow-binding rubber-band into the
+      // renderer so the user sees a live preview from the start binding
+      // point to the cursor.
+      const binding = pendingBinding.current;
+      const rubber = binding && pendingBindingPreview ? {
+        start: binding.startPoint,
+        end: pendingBindingPreview,
+      } : null;
+      renderScene(c,elements,zoom,pan,selected,marquee,multiSel,rubber,store.getScene().bindings);
     };
     resize();
     window.addEventListener("resize",resize);
     return()=>window.removeEventListener("resize",resize);
-  },[elements,zoom,pan,selected,marquee,multiSel,cssW,cssH]);
+  },[elements,zoom,pan,selected,marquee,multiSel,cssW,cssH,pendingBindingPreview]);
 
   // 2. keyboard shortcuts
   useEffect(()=>{
@@ -104,6 +121,12 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
   const hitTestHandle=(p:{x:number;y:number}):{handle:ResizeHandle;target:Element} | null => {
     const hs=HANDLE_PX/zoom;
     const PAD=6; // matches Renderer.ts
+    // Renderer draws handles with `lineWidth = 1.5` in world units after the
+    // zoom transform, so the stroked outline extends ~0.75 world units
+    // OUTSIDE the fillRect on every side. Without this margin the visible
+    // painted handle sits outside the hit-test rectangle and clicks never
+    // commit at zoom > ~1.0.
+    const HIT_MARGIN = 0.75;
     for(let i=elements.length-1;i>=0;i--){
       const el=elements[i];
       if(el.isDeleted) continue;
@@ -115,30 +138,57 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
         {h:"sw",cx:left-PAD,cy:bottom+PAD-hs},
         {h:"se",cx:right+PAD-hs,cy:bottom+PAD-hs},
       ];
-      const c=corners.find(c=>p.x>=c.cx&&p.x<=c.cx+hs&&p.y>=c.cy&&p.y<=c.cy+hs);
+      const c=corners.find(c=>
+        p.x>=c.cx-HIT_MARGIN&&p.x<=c.cx+hs+HIT_MARGIN&&
+        p.y>=c.cy-HIT_MARGIN&&p.y<=c.cy+hs+HIT_MARGIN,
+      );
       if(c) return {handle:c.h, target:el};
     }
     return null;
   };
 
-  return <canvas
+  // Derive the currently-selected element's type so the ColorPanel can decide
+  // whether to render (only shapes carry a fill color).
+  const selectedElement = selected ? elements.find(el => el.id === selected) : undefined;
+  const selectedType = selectedElement ? selectedElement.type : null;
+  const isShapeType = (t: string | null): boolean =>
+    t === "rectangle" || t === "diamond" || t === "ellipse";
+  return <div className="canvas-stage">
+    {selected && isShapeType(selectedType) && (
+      <div className="color-panel-overlay">
+        <ColorPanel store={store} selectedId={selected} selectedType={selectedType} />
+      </div>
+    )}
+    <canvas
     ref={ref}
     data-testid="canvas"
     width={Math.round(cssW*devicePixelRatio)}
     height={Math.round(cssH*devicePixelRatio)}
     style={{width:cssW+"px",height:cssH+"px",display:"block"}}
-    className={"canvas tool-"+tool+(drag.current?" dragging":"")+(tool==="select"&&hovering?" hovering":"")}
+    className={"canvas tool-"+tool+(drag.current?" dragging":"")+(tool==="select"&&hovering?" hovering":"")+(tool==="arrow"&&hoverBinding?" binding-hover":"")}
     onDoubleClick={e=>{
       const p=world(e as unknown as React.PointerEvent);
       if(tool!=="select")return;
-      const textHit=[...elements].reverse().find(el=>el.type==="text"&&pointInElement(el,p.x,p.y,8));
-      if(textHit){
-        const next=window.prompt("Edit text:",String((textHit as any).text||""));
-        if(next!==null&&next.trim()!=="")store.updateElement(textHit.id,{text:next,originalText:next} as any);
+      // 1. Bound text inside a shape -> route through handleBindAt so the
+      //    existing text is UPDATED (or cleared, if the user submits "").
+      const shapeHit=[...elements].reverse().find(el=>
+        (el.type==="rectangle"||el.type==="diamond"||el.type==="ellipse")&&
+        pointInElement(el,p.x,p.y,8),
+      );
+      if(shapeHit){
+        handleBindAt(p.x, p.y);
         return;
       }
-      // F10: route through useTextBinding for the shape-hit case.
-      handleBindAt(p.x, p.y);
+      // 2. Standalone (non-bound) text element on canvas -> edit directly.
+      //    Empty/whitespace input now CLEARs the text (was: silently preserved).
+      const textHit=[...elements].reverse().find(el=>
+        el.type==="text"&&!el.containerId&&pointInElement(el,p.x,p.y,8),
+      );
+      if(textHit){
+        const next=window.prompt("Edit text:",String((textHit as any).text||""));
+        if(next!==null)store.updateElement(textHit.id,{text:next,originalText:next} as any);
+        return;
+      }
     }}
     onWheel={e=>{
       if(e.ctrlKey||e.metaKey){
@@ -154,7 +204,7 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
       const p=world(e);
       // pan (middle / Space / hand tool) — scrolls the wrapper
       if(e.button===1||(e.getModifierState as (k:string)=>boolean)("Space")||tool==="hand"){
-        drag.current={...p,space:true,gesture:"none"};
+        drag.current={...p,pdownX:p.x,pdownY:p.y,space:true,gesture:"none"};
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
         return;
       }
@@ -162,7 +212,7 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
         // 1) resize-handle hit-test (works even before user has selected anything)
         const handleHit=hitTestHandle(p);
         if(handleHit){
-          drag.current={x:p.x,y:p.y,id:handleHit.target.id,start:handleHit.target,space:false,gesture:"resize",handle:handleHit.handle};
+          drag.current={x:p.x,y:p.y,pdownX:p.x,pdownY:p.y,id:handleHit.target.id,start:handleHit.target,space:false,gesture:"resize",handle:handleHit.handle};
           setSelected(handleHit.target.id);
           pointerDownPos.current=null;
           (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -195,25 +245,52 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
         if(hit)store.deleteElement(hit.id);
         return;
       }
+      // Task E — arrow-tool binding-point pick. If the user pressed on
+      // one of the snap zones around a shape's binding point, capture
+      // it as the start of an arrow-to-shape drag and wait for pointerup
+      // to materialize the arrow. The arrow is NOT created on pointerdown
+      // because we don't yet know the end point.
+      if (tool === "arrow") {
+        const startHit = hitBindingPoint(elements, p.x, p.y);
+        if (startHit) {
+          const fp = closestBindingPoint(startHit.element, p.x, p.y).fixedPoint;
+          const startWorld = bindingPointWorld(startHit.element, startHit.point);
+          pendingBinding.current = {
+            startPoint: startWorld,
+            element: startHit.element,
+            fixedPoint: fp,
+          };
+          setPendingBindingPreview({ x: p.x, y: p.y });
+          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+          return;
+        }
+      }
       const el=makeElement(tool,p.x,p.y,1,1);
       store.createElement(el);setSelected(el.id);
-      drag.current={...p,id:el.id,start:el,gesture:"drag-element"};
+      drag.current={...p,pdownX:p.x,pdownY:p.y,id:el.id,start:el,gesture:"drag-element"};
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       setHovering(false);
     }}
     onPointerMove={e=>{
       if(e.buttons===0){
         drag.current=null;pointerDownPos.current=null;setMarquee(null);setHovering(false);
+        pendingBinding.current=null;setPendingBindingPreview(null);
         return;
       }
       const pHover=world(e);
+      // Task E — track the cursor while an arrow-binding drag is in
+      // flight so the rubber-band stays anchored to the pointer.
+      if (pendingBinding.current) {
+        setPendingBindingPreview({ x: pHover.x, y: pHover.y });
+        return;
+      }
       // threshold-based gesture commit
       if(pointerDownPos.current&&!drag.current){
         const ddx=pHover.x-pointerDownPos.current.x;
         const ddy=pHover.y-pointerDownPos.current.y;
         if(Math.hypot(ddx,ddy)>=DRAGGING_THRESHOLD){
           if(pointerDownPos.current.hit){
-            drag.current={x:pointerDownPos.current.x,y:pointerDownPos.current.y,id:pointerDownPos.current.hit.id,start:pointerDownPos.current.hit,space:false,gesture:"drag-element"};
+            drag.current={x:pointerDownPos.current.x,y:pointerDownPos.current.y,pdownX:pointerDownPos.current.x,pdownY:pointerDownPos.current.y,id:pointerDownPos.current.hit.id,start:pointerDownPos.current.hit,space:false,gesture:"drag-element"};
           } else {
             setMarquee({x1:pointerDownPos.current.x,y1:pointerDownPos.current.y,x2:pHover.x,y2:pHover.y});
             setMultiSel([]);
@@ -225,18 +302,39 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
           return;
         }
       }
-      if(marquee){setMarquee(m=>m?{...m,x2:pHover.x,y2:pHover.y}:null);setHovering(false);return;}
+      if(marquee){setMarquee(m=>m?{...m,x2:pHover.x,y2:pHover.y}:null);setHovering(false);setHoverBinding(false);return;}
       if(!drag.current){
         const hit=[...elements].reverse().find(el=>pointInElement(el,pHover.x,pHover.y,8));
         setHovering(!!hit);
+        // Task E — show binding-snap hover state in arrow-tool mode so
+        // the user can see which shape the arrow will latch onto.
+        if (tool === "arrow") {
+          setHoverBinding(!!hitBindingPoint(elements, pHover.x, pHover.y));
+        } else {
+          setHoverBinding(false);
+        }
         return;
       }
       const p=pHover;
-      const d={x:p.x-drag.current.x,y:p.y-drag.current.y};
+      // Two deltas:
+      // - dCumulative: from the IMMUTABLE pointerdown anchor (drag.current.pdownX/Y).
+      //   Used for resize / drag-element / arrow / line / draw-shape so multi-step
+      //   pointer events accumulate correctly. Without this, a 50-step Playwright
+      //   drag would shrink the shape because d.x would equal only the LAST step's
+      //   delta, not the total.
+      // - dEvent: from the last processed event (drag.current.x/y). Used for the
+      //   pan branch only, where each move should pan by exactly the per-event
+      //   delta and we reset drag.current = {...p} at the end of the branch.
+      const dCumulative={x:p.x-(drag.current.pdownX??drag.current.x),y:p.y-(drag.current.pdownY??drag.current.y)};
+      const dEvent={x:p.x-drag.current.x,y:p.y-drag.current.y};
       if(drag.current.space){
-        const wrap=ref.current?.parentElement;
-        if(wrap){wrap.scrollLeft-=d.x*zoom;wrap.scrollTop-=d.y*zoom;}
-        drag.current={...p,space:true,gesture:"none"};
+        // Hand-tool / Space / middle-button pan: move the world via setPan
+        // instead of touching the wrapper's scrollLeft / scrollTop. The
+        // scrollLeft approach was broken because the wrapper clamps its
+        // own scrollLeft to [0, scrollWidth - clientWidth] — the first
+        // rightward pan from scrollLeft=0 produced no motion at all.
+        setPan(v=>({x:v.x+dEvent.x*zoom,y:v.y+dEvent.y*zoom}));
+        drag.current={...p,pdownX:drag.current.pdownX,pdownY:drag.current.pdownY,space:true,gesture:"none"};
         return;
       }
       const id=drag.current.id;
@@ -247,26 +345,61 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
       if(drag.current.gesture==="resize"){
         const handle=drag.current.handle!;
         let nx=start.x,ny=start.y,nw=start.width,nh=start.height;
-        if(handle==="nw"){nw=start.width-d.x;nh=start.height-d.y;nx=start.x+d.x;ny=start.y+d.y;}
-        else if(handle==="ne"){nw=start.width+d.x;nh=start.height-d.y;ny=start.y+d.y;}
-        else if(handle==="sw"){nw=start.width-d.x;nh=start.height+d.y;nx=start.x+d.x;}
-        else if(handle==="se"){nw=start.width+d.x;nh=start.height+d.y;}
+        if(handle==="nw"){nw=start.width-dCumulative.x;nh=start.height-dCumulative.y;nx=start.x+dCumulative.x;ny=start.y+dCumulative.y;}
+        else if(handle==="ne"){nw=start.width+dCumulative.x;nh=start.height-dCumulative.y;ny=start.y+dCumulative.y;}
+        else if(handle==="sw"){nw=start.width-dCumulative.x;nh=start.height+dCumulative.y;nx=start.x+dCumulative.x;}
+        else if(handle==="se"){nw=start.width+dCumulative.x;nh=start.height+dCumulative.y;}
         if(nw<MIN_SIZE){nw=MIN_SIZE;if(handle==="nw"||handle==="sw")nx=start.x+start.width-MIN_SIZE;}
         if(nh<MIN_SIZE){nh=MIN_SIZE;if(handle==="nw"||handle==="ne")ny=start.y+start.height-MIN_SIZE;}
         store.updateElement(id,{x:nx,y:ny,width:nw,height:nh});
         return;
       }
       if(tool==="select"){
-        store.updateElement(id,{x:start.x+d.x,y:start.y+d.y});
+        store.updateElement(id,{x:start.x+dCumulative.x,y:start.y+dCumulative.y});
       } else if(tool==="arrow"||tool==="line"){
-        store.updateElement(id,{points:[[0,0],[d.x,d.y]] as any});
+        store.updateElement(id,{points:[[0,0],[dCumulative.x,dCumulative.y]] as any});
       } else {
-        store.updateElement(id,{width:d.x,height:d.y});
+        store.updateElement(id,{width:dCumulative.x,height:dCumulative.y});
       }
     }}
-    onPointerCancel={()=>{drag.current=null;setMarquee(null);setHovering(false);pointerDownPos.current=null;}}
+    onPointerCancel={()=>{drag.current=null;setMarquee(null);setHovering(false);setHoverBinding(false);pointerDownPos.current=null;pendingBinding.current=null;setPendingBindingPreview(null);}}
     onPointerUp={e=>{
       try{(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)}catch{};
+      // Task E — finalize an arrow-to-shape binding drag.
+      if (pendingBinding.current) {
+        const start = pendingBinding.current;
+        const pEnd = world(e as unknown as React.PointerEvent);
+        const endHit = hitBindingPoint(elements, pEnd.x, pEnd.y);
+        const arrow = makeElement("arrow", start.startPoint.x, start.startPoint.y, 0, 0);
+        // End point is the endHit binding point's world coord (if latched) or the
+        // raw pointer position. Pre-fix used endHit.element.x / .y which is the
+        // top-left corner of the target shape — the visual line then went to a
+        // point nowhere near where the user dragged to. Use bindingPointWorld
+        // (or closestBindingPoint's fixedPoint) so the line lands on the
+        // actual binding point the user hovered.
+        let endWorldX: number;
+        let endWorldY: number;
+        let endBinding: any = null;
+        if (endHit) {
+          const endFp = closestBindingPoint(endHit.element, pEnd.x, pEnd.y);
+          const endWorld = bindingPointWorld(endHit.element, endFp.point);
+          endWorldX = endWorld.x;
+          endWorldY = endWorld.y;
+          endBinding = { elementId: endHit.element.id, focus: 0, gap: 1, fixedPoint: endFp.fixedPoint };
+        } else {
+          endWorldX = pEnd.x;
+          endWorldY = pEnd.y;
+        }
+        (arrow as any).points = [[0, 0], [endWorldX - start.startPoint.x, endWorldY - start.startPoint.y]];
+        (arrow as any).startBinding = { elementId: start.element.id, focus: 0, gap: 1, fixedPoint: start.fixedPoint };
+        (arrow as any).endBinding = endBinding;
+        store.createElement(arrow);
+        setSelected(arrow.id);
+        pendingBinding.current = null;
+        setPendingBindingPreview(null);
+        setTool("select");
+        return;
+      }
       if(marquee){
         const left=Math.min(marquee.x1,marquee.x2)-4;
         const right=Math.max(marquee.x1,marquee.x2)+4;
@@ -286,5 +419,6 @@ export function Canvas({store,tool,setTool}:{store:SceneStore;tool:Tool;setTool:
       }
       drag.current=null;pointerDownPos.current=null;
     }}
-  />;
+    />;
+  </div>;
 }

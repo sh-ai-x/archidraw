@@ -1,4 +1,4 @@
-import type {Element} from "@archidraw/schema";
+import type {Element, ShapeTextBinding} from "@archidraw/schema";
 import rough from "roughjs";
 import {getStroke} from "perfect-freehand";
 
@@ -142,7 +142,62 @@ export const layoutLines = (
   });
 };
 
-export const renderScene=(canvas:HTMLCanvasElement,elements:Element[],zoom=1,pan={x:0,y:0},selected:string|null=null,marquee?:{x1:number;y1:number;x2:number;y2:number}|null,multiSel:string[]=[])=>{
+/**
+ * Draw a single text element at the given bounds. Pulled out of the
+ * `renderScene` per-frame loop so the N:N binding path can call it once
+ * per (binding, text) pair.
+ */
+const drawTextElement = (
+  ctx: CanvasRenderingContext2D,
+  e: Element,
+  bounds: {x: number; y: number; w: number; h: number},
+  measureWidth: (s: string) => number,
+): void => {
+  // Cast once: Element is a discriminated union; only TextElement has
+  // these fields. The runtime guards (typeof checks) already defend
+  // against wrong element types being passed in.
+  const t = e as unknown as {
+    fontSize?: number;
+    strokeColor?: string;
+    text?: unknown;
+    lineHeight?: number;
+    textAlign?: "left" | "center" | "right";
+    verticalAlign?: "top" | "middle" | "bottom";
+  };
+  const fontSize = t.fontSize || 12;
+  ctx.font = `${fontSize}px Inter, ui-sans-serif, system-ui, sans-serif`;
+  ctx.fillStyle = t.strokeColor || "#1f2937";
+  const rawText = typeof t.text === "string" ? t.text : String(t.text ?? "");
+  const lines = wrapText(rawText, bounds, measureWidth);
+  const lineHeight = (t.lineHeight || 1.2) * fontSize;
+  const anchors = layoutLines(lines, bounds, {
+    fontSize,
+    lineHeight,
+    textAlign: t.textAlign,
+    verticalAlign: t.verticalAlign,
+  });
+  ctx.textAlign = t.textAlign === "center" ? "center"
+    : t.textAlign === "right" ? "end"
+    : "start";
+  ctx.textBaseline = "alphabetic";
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], anchors[i].x, anchors[i].y);
+  }
+};
+
+export const renderScene=(
+  canvas:HTMLCanvasElement,
+  elements:Element[],
+  zoom=1,
+  pan={x:0,y:0},
+  selected:string|null=null,
+  marquee?:{x1:number;y1:number;x2:number;y2:number}|null,
+  multiSel:string[]=[],
+  rubberBand?:{start:{x:number;y:number};end:{x:number;y:number}}|null,
+  // (2026-08-22) N:N shape↔text bindings. Optional so the existing call
+  // sites (Canvas.tsx + renderer unit tests) keep their 8-arg signature.
+  bindings?: ShapeTextBinding[],
+)=>{
   const ctx=canvas.getContext("2d");
   if(!ctx)return;
   ctx.clearRect(0,0,canvas.width,canvas.height);
@@ -151,6 +206,7 @@ export const renderScene=(canvas:HTMLCanvasElement,elements:Element[],zoom=1,pan
   ctx.translate(pan.x,pan.y);
   ctx.scale(zoom,zoom);
   const rc=rough.canvas(canvas);
+  const measureWidth = (s: string): number => ctx.measureText(s).width;
   for(const e of elements){
     if(e.isDeleted)continue;
     const opts={seed:e.seed,stroke:e.strokeColor,strokeWidth:e.strokeWidth,roughness:e.roughness,fillStyle:e.fillStyle||"solid",fill:e.backgroundColor==="transparent"?undefined:e.backgroundColor};
@@ -180,31 +236,72 @@ export const renderScene=(canvas:HTMLCanvasElement,elements:Element[],zoom=1,pan
         ctx.closePath();
         ctx.fillStyle=e.strokeColor;
         ctx.fill();
+
+        // Task E — point-to-shape binding indicators. When the arrow has a
+        // startBinding / endBinding we draw a small filled circle at the
+        // bound point's world position so the user can see which points the
+        // arrow is anchored to. Blue when the arrow is the primary
+        // selection, gray otherwise.
+        const arrowAny = e as unknown as {startBinding?: any; endBinding?: any};
+        const isArrowSelected = selected === e.id;
+        const drawBindingDot = (binding: any) => {
+          if (!binding || !binding.fixedPoint) return;
+          const target = elements.find(el => el.id === binding.elementId && !el.isDeleted);
+          if (!target) return;
+          const w = target.width || 0, h = target.height || 0;
+          const [nx, ny] = binding.fixedPoint;
+          const bx2 = target.x + nx * w;
+          const by2 = target.y + ny * h;
+          const r = 4 / zoom;
+          ctx.beginPath();
+          ctx.arc(bx2, by2, r, 0, Math.PI * 2);
+          ctx.fillStyle = isArrowSelected ? "#3b82f6" : "#9ca3af";
+          ctx.fill();
+        };
+        drawBindingDot(arrowAny.startBinding);
+        drawBindingDot(arrowAny.endBinding);
       }
     } else if(e.type==="text"){
-      const fontSize=e.fontSize||12;
-      ctx.font=`${fontSize}px Inter, ui-sans-serif, system-ui, sans-serif`;
-      ctx.fillStyle=e.strokeColor;
-
-      // F08: delegate layout to the pure helpers above. The renderer
-      // is now a thin orchestrator: resolve → wrap → layout → draw.
-      const {bounds, wrapped, rawText} = resolveContainerBounds(e, elements);
-      // ctx.measureText returns TextMetrics; wrapText takes a width-only
-      // function. Adapter keeps the helper signature simple for tests.
-      const measureWidth = (s: string): number => ctx.measureText(s).width;
-      const lines = wrapped ? wrapText(rawText, bounds, measureWidth) : [rawText];
-      const lineHeight = (e.lineHeight || 1.2) * fontSize;
-      const anchors = layoutLines(lines, bounds, {
-        fontSize,
-        lineHeight,
-        textAlign: e.textAlign,
-        verticalAlign: e.verticalAlign,
-      });
-      ctx.textAlign = e.textAlign === "center" ? "center" : e.textAlign === "right" ? "end" : "start";
-      ctx.textBaseline = "alphabetic";
-      for (let i = 0; i < lines.length; i++) {
-        ctx.fillText(lines[i], anchors[i].x, anchors[i].y);
+      // (2026-08-22) N:N binding collection. If `bindings` is provided
+      // (the GUI default since the binding helpers run on every store
+      // mutation), prefer the binding-driven path: draw the text once
+      // for each binding whose textId matches. Falls back to the legacy
+      // containerId path when the text has no N:N bindings — that keeps
+      // every pre-binding scene renderable.
+      const myBindings = (bindings || []).filter(b => b.textId === e.id);
+      if (myBindings.length > 0) {
+        for (const binding of myBindings) {
+          const shape = elements.find(el => el.id === binding.shapeId && !el.isDeleted);
+          if (!shape) continue;
+          const [nx, ny] = binding.shapeAnchor;
+          const cx = shape.x + (shape.width || 0) * nx;
+          const cy = shape.y + (shape.height || 0) * ny;
+          // MVP: render the text inside the bound shape's bbox, centered
+          // at the binding's anchor point. textAlign + verticalAlign drive
+          // the line layout as before.
+          const bounds = {
+            x: shape.x + TEXT_IN_SHAPE_INSET,
+            y: shape.y + TEXT_IN_SHAPE_INSET,
+            w: Math.max(0, (shape.width || 0) - 2 * TEXT_IN_SHAPE_INSET),
+            h: Math.max(0, (shape.height || 0) - 2 * TEXT_IN_SHAPE_INSET),
+          };
+          // Use the shape's anchor as the visual center when the text
+          // element asks for centered alignment. Otherwise draw at the
+          // inner-bounds top-left as the existing containerId path did.
+          const isCentered = (e.textAlign === "center" || e.textAlign === "right")
+            || (binding.shapeAnchor[0] !== 0.5 || binding.shapeAnchor[1] !== 0.5);
+          const drawBounds = isCentered
+            ? {...bounds, x: cx - bounds.w / 2, y: cy - bounds.h / 2}
+            : bounds;
+          drawTextElement(ctx, e, drawBounds, measureWidth);
+        }
+        continue;
       }
+      // Legacy containerId fallback: render once, inside the container's
+      // inner bounds. Kept identical to the pre-binding code so every
+      // pre-N:N scene still renders text in the same place.
+      const {bounds} = resolveContainerBounds(e, elements);
+      drawTextElement(ctx, e, bounds, measureWidth);
     }
 
     if(selected===e.id){
@@ -241,6 +338,25 @@ export const renderScene=(canvas:HTMLCanvasElement,elements:Element[],zoom=1,pan
     ctx.setLineDash([5,4]);
     ctx.strokeRect(left,top,right-left,bottom-top);
     ctx.setLineDash([]);
+  }
+  // Task E — live rubber-band for an in-flight arrow-binding drag.
+  // Drawn AFTER the marquee so it stays visible while the user moves
+  // the pointer before committing on pointerup.
+  if (rubberBand) {
+    ctx.strokeStyle = "#3b82f6";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(rubberBand.start.x, rubberBand.start.y);
+    ctx.lineTo(rubberBand.end.x, rubberBand.end.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Anchor dots at both ends so the user sees which binding point the
+    // arrow is going to attach to.
+    const r = 4 / zoom;
+    ctx.fillStyle = "#3b82f6";
+    ctx.beginPath(); ctx.arc(rubberBand.start.x, rubberBand.start.y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(rubberBand.end.x, rubberBand.end.y, r, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
 };
